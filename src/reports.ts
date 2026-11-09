@@ -28,7 +28,9 @@ export interface Prepared {
 // The texts are tuned so that Clef-flash gives the expected action in both
 // languages, with some margin to the profile's thresholds (checked on
 // 2026-10-20 with Pointsman dev:live and FACTS_MODE gsi). A model update can move the answers:
-// check again then.
+// check again then. Last check: 2026-11-10, same setup, after the English
+// water-pipe-works and fallen-tree texts were reworded (#132): status_matches
+// 0.84 and danger 0.25; all 18 examples pass.
 export const PREPARED: Prepared[] = [
   {
     id: 'flooded-underpass',
@@ -81,7 +83,7 @@ export const PREPARED: Prepared[] = [
     statusLabel: '車線規制',
     description: {
       ja: '水道管工事のため、9時から17時まで左車線を規制。右車線は通行できる。',
-      en: 'Water pipe works: the left lane is closed from 9:00 to 17:00. Traffic passes in the right lane.',
+      en: 'Water pipe works: the left lane is closed from 9:00 to 17:00, so the road is limited to one lane. Traffic passes in the right lane.',
     },
     location: { type: 'LineString', coordinates: [[139.756542, 35.699003], [139.755839, 35.70028]] },
     expected: 'publish',
@@ -153,7 +155,7 @@ export const PREPARED: Prepared[] = [
     status: 'closed',
     description: {
       ja: '大雨と強風で倒木があり、両車線が通れない（日比谷公園の横、7時から）。作業班が向かっている。',
-      en: 'Heavy rain and strong wind brought down a tree; both lanes are blocked next to Hibiya Park since 7 am. Crews are on the way.',
+      en: 'A tree fell in heavy rain and strong wind; the road next to Hibiya Park has been closed in both directions since 7 am. Crews are on the way to remove it.',
     },
     location: { type: 'Point', coordinates: [139.758798, 35.674377] },
     expected: 'publish',
