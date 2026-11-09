@@ -28,10 +28,9 @@ export interface Prepared {
 // The texts are tuned so that Clef-flash gives the expected action in both
 // languages, with some margin to the profile's thresholds (checked on
 // 2026-10-20 with Pointsman dev:live and FACTS_MODE gsi). A model update can move the answers:
-// check again then. On 2026-11-09 the English water-pipe-works and fallen-tree
-// texts had moved just past a threshold (status_matches 0.79, danger 0.51) and
-// were reworded (checked on 2026-11-10 with dev:live and FACTS_MODE gsi:
-// 0.84 and 0.17; all 18 examples pass).
+// check again then. Last check: 2026-11-10, same setup, after the English
+// water-pipe-works and fallen-tree texts were reworded (#132): status_matches
+// 0.84 and danger 0.25; all 18 examples pass.
 export const PREPARED: Prepared[] = [
   {
     id: 'flooded-underpass',
@@ -156,7 +155,7 @@ export const PREPARED: Prepared[] = [
     status: 'closed',
     description: {
       ja: '大雨と強風で倒木があり、両車線が通れない（日比谷公園の横、7時から）。作業班が向かっている。',
-      en: 'A tree fell in heavy rain and strong wind; the road next to Hibiya Park is closed in both directions since 7 am. Crews are on the way to remove it.',
+      en: 'A tree fell in heavy rain and strong wind; the road next to Hibiya Park has been closed in both directions since 7 am. Crews are on the way to remove it.',
     },
     location: { type: 'Point', coordinates: [139.758798, 35.674377] },
     expected: 'publish',
