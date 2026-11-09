@@ -12,7 +12,7 @@
 
   var T = {
     en: {
-      demo: 'demo', title: 'Heavy rain. Reports of closed roads are coming in.',
+      demo: 'roads demo', title: 'Heavy rain. Reports of closed roads are coming in.',
       lead: 'Send one, and watch Pointsman decide in seconds what happens to it. It reads the report, checks the place on public maps, and applies the city’s rules.',
       st1: 'Pick a report', st2: 'First check', st3: 'Additional check', st4: 'Final result',
       howTitle: 'How it works', close: 'Close',
@@ -191,7 +191,7 @@
       footer: 'Invented events at real places. Do not enter personal data. Map: <a href="https://maps.gsi.go.jp/development/ichiran.html">地理院タイル</a>.',
     },
     ja: {
-      demo: 'デモ', title: '大雨。通行止めの報告が次々に届く。',
+      demo: '道路デモ', title: '大雨。通行止めの報告が次々に届く。',
       lead: '報告を 1 件送ってみてください。その報告をどうするかを、Pointsman が数秒で決めます。報告を読み、場所を公開の地図で調べ、市の規則を当てはめます。',
       st1: '報告を選ぶ', st2: '最初の確認', st3: '追加の確認', st4: '最終結果',
       howTitle: '仕組み', close: '閉じる',
