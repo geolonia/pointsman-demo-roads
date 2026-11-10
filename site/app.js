@@ -472,7 +472,7 @@
     // With the map card beside the steps, to the top of both columns: the card cannot
     // move further down than the steps column, so scrolling to the stepper alone could put the
     // card's top (the report) under the header; the stepper stays in view there too. Otherwise
-    // (narrow screens, the bottom drawer open, a short window) to the stepper.
+    // (narrow screens, a side panel open below 1600 px) to the stepper.
     var card = document.querySelector('.map-card');
     // Beside the steps: sticky, and on the same row (with a side panel open the card wraps below).
     var beside = getComputedStyle(card).position === 'sticky' && card.getBoundingClientRect().left >= document.querySelector('.steps').getBoundingClientRect().right;
