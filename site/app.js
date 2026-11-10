@@ -37,7 +37,8 @@
       limit: 'The demo reached its limit for today. Please come back tomorrow.', failed: 'Could not send the report: ',
       decideTitle: 'First check', yourReport: 'Your report', aReport: 'A report', noRoad: '(no road name)',
       s1: 'Saved in the city’s data platform', s1d: 'The way any city app would save it.',
-      s2: 'The AI answered four questions', s2d: 'It reads the text. It does not decide.',
+      s2: 'The AI answered four questions, each with a probability', s2d: 'It reads the text. It does not decide.',
+      chanceYes: function (n) { return 'chance of yes ' + n + ' %'; }, chanceDanger: function (n) { return 'chance of danger ' + n + ' %'; },
       s3: 'Pointsman checked the place on maps', s3d: 'Flood zone and nearest evacuation site, from public map data; for a closed section, also the way around by car (and on foot when a person checks it).',
       s4: 'The city’s rule decided', s4d: 'Answers and facts in, one action out.',
       working: 'Working…', together: 'Passed on to Pointsman; these two run at the same time', inAll: function (s) { return s + ' in all'; },
@@ -216,7 +217,8 @@
       limit: '本日のデモの上限に達しました。また明日お試しください。', failed: '報告を送れませんでした：',
       decideTitle: '最初の確認', yourReport: 'あなたの報告', aReport: '報告', noRoad: '（道路名なし）',
       s1: '市のデータ基盤に保存', s1d: '市のアプリが保存するのと同じ方法です。',
-      s2: 'AI が 4 つの質問に答えた', s2d: 'AI は本文を読むだけで、決めはしません。',
+      s2: 'AI が 4 つの質問に、確率つきで答えた', s2d: 'AI は本文を読むだけで、決めはしません。',
+      chanceYes: function (n) { return '「はい」の確率 ' + n + ' %'; }, chanceDanger: function (n) { return '危険の確率 ' + n + ' %'; },
       s3: 'Pointsman が地図で場所を調べた', s3d: '浸水想定区域と最寄りの避難場所を、公開の地図データから調べます。通行止め区間では、車で迂回する道のりも調べます（人に回る報告では、歩いて迂回する道のりも）。',
       s4: '市の規則が決めた', s4d: '答えと事実から、行動を 1 つ決めます。',
       working: '処理中…', together: 'Pointsman に渡され、この 2 つは同時に進みます', inAll: function (s) { return '合計 ' + s; },
@@ -442,7 +444,7 @@
     renderPending();
     renderCaption();
     renderStats();
-    if (!$('how').hidden) renderHowGraph();
+    if ($('how').hasAttribute('open')) renderHowGraph();
     renderShelterLabel();
     if (current) renderCurrent();
     else renderDev();
@@ -847,9 +849,27 @@
           el('strong', { text: answerText(name, a.value) }),
           c ? el('span', { class: 'conf ' + c, text: t('conf')[c] }) : null,
         ]),
+        probBar(name, a),
       ]));
     });
     return list;
+  }
+
+  /**
+   * The answer's probability as a bar, as in the buildings demo: for a yes/no
+   * question the chance of yes (for danger, the chance of danger), else how
+   * sure the AI is of its answer.
+   */
+  function probBar(name, a) {
+    if (typeof a.p !== 'number') return null;
+    var yes = typeof a.value === 'boolean' ? (a.value ? a.p : 1 - a.p) : null;
+    var share = yes === null ? a.p : yes;
+    var n = Math.round(share * 100);
+    var label = yes === null ? n + ' %' : name === 'danger' ? t('chanceDanger')(n) : t('chanceYes')(n);
+    return el('span', { class: 'pcol' }, [
+      el('span', { class: 'pbar' + (name === 'danger' ? ' danger' : ''), 'aria-hidden': 'true' }, [el('i', { style: 'width:' + Math.max(0, Math.min(100, n)) + '%' })]),
+      el('span', { class: 'plabel', text: label }),
+    ]);
   }
 
   function renderAnswers(r) {
@@ -1464,14 +1484,23 @@
       el('pre', { text: q.method + ' ' + url + '\nNGSILD-Tenant: ' + q.tenant + '\nLink: <' + q.link + '>; rel="http://www.w3.org/ns/json-ld#context"; type="application/ld+json"' })]));
   }
 
+  var howPressOutside = false;
+  // Without <dialog>: the button that opened the panel, to give focus back on close (a dialog does that itself).
+  var howOpener = null;
+  function outsideDialog(e) {
+    var b = $('how').getBoundingClientRect();
+    return e.clientX < b.left || e.clientX > b.right || e.clientY < b.top || e.clientY > b.bottom;
+  }
+
   function setHow(open) {
-    $('how').hidden = !open;
+    var d = $('how');
+    // Browsers without <dialog> (Safari before 15.4): shown in place, without the modal.
+    // The attribute, not .open: without <dialog> support (Safari before 15.4) there is no .open.
+    var shown = d.hasAttribute('open');
+    if (open && !shown) { renderHowGraph(); if (d.showModal) d.showModal(); else { howOpener = document.activeElement; d.setAttribute('open', ''); d.scrollIntoView({ block: 'start' }); $('how-close').focus(); } }
+    if (!open && shown) { if (d.close) d.close(); else { d.removeAttribute('open'); if (howOpener && howOpener.focus) howOpener.focus(); } }
     $('how-toggle').setAttribute('aria-expanded', String(open));
     $('how-open').setAttribute('aria-expanded', String(open));
-    if (open) {
-      renderHowGraph();
-      $('how').scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
   }
 
   // The reports panel, beside the page like the developer view: recent
@@ -1914,7 +1943,16 @@
     applyTheme(map);
     try { localStorage.setItem('theme', next); } catch (e) {}
   });
-  $('how-toggle').addEventListener('click', function () { setHow($('how').hidden); });
+  $('how-toggle').addEventListener('click', function () { setHow(!$('how').hasAttribute('open')); });
+  // Escape closes the dialog by itself; so does a click on the dark area around it.
+  $('how').addEventListener('close', function () { $('how-toggle').setAttribute('aria-expanded', 'false'); $('how-open').setAttribute('aria-expanded', 'false'); });
+  $('how').addEventListener('click', function (e) {
+    // Only a click on the dark area: the dialog itself (its padding too) is the target as well,
+    // and a text selection that ends outside must not close it (the press started inside).
+    if (e.target !== e.currentTarget || !howPressOutside) return;
+    if (outsideDialog(e)) setHow(false);
+  });
+  $('how').addEventListener('pointerdown', function (e) { howPressOutside = e.target === e.currentTarget && outsideDialog(e); });
   $('activity-toggle').addEventListener('click', function () { setActivity($('activity').hidden); });
   $('activity-close').addEventListener('click', function () { setActivity(false); $('activity-toggle').focus(); });
   $('how-close').addEventListener('click', function () { setHow(false); });
