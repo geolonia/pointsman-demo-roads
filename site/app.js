@@ -444,7 +444,7 @@
     renderPending();
     renderCaption();
     renderStats();
-    if ($('how').open) renderHowGraph();
+    if ($('how').hasAttribute('open')) renderHowGraph();
     renderShelterLabel();
     if (current) renderCurrent();
     else renderDev();
