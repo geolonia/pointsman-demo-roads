@@ -233,6 +233,9 @@ pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 
 
 /* Map */
 .map-card { flex: 1 1 400px; min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+/* Beside the steps (wide screens), the map stays in view while the page scrolls to the steps,
+   as in the buildings demo; only where the whole card fits in the window. */
+@media (min-width: 1040px) and (min-height: 820px) { .map-card { position: sticky; top: calc(var(--top-h, 62px) + 12px); } }
 .map-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border-bottom: 1px solid var(--line); }
 .toggle { display: flex; background: var(--panel-2); border-radius: 999px; padding: 3px; }
 .toggle button { font: 500 14px var(--sans); min-height: 38px; padding: 0 14px; border-radius: 999px; border: none; background: transparent; color: var(--muted); cursor: pointer; }
