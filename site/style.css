@@ -235,7 +235,12 @@ pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 
 .map-card { flex: 1 1 400px; min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
 /* Beside the steps (wide screens), the map stays in view while the page scrolls to the steps,
    as in the buildings demo; only where the whole card fits in the window. */
-@media (min-width: 1040px) and (min-height: 820px) { .map-card { position: sticky; top: calc(var(--top-h, 62px) + 12px); } }
+@media (min-width: 1040px) and (min-height: 820px) {
+  /* At most the window's height: with the report on top (steps 3 and 4) the card scrolls inside. */
+  .map-card { position: sticky; top: calc(var(--top-h, 62px) + 12px); max-height: calc(100vh - var(--top-h, 62px) - 24px); max-height: calc(100dvh - var(--top-h, 62px) - 24px); overflow-y: auto; }
+}
+/* Below 1100 px the developer view and the reports panel are a drawer at the bottom: not sticky then. */
+@media (min-width: 1040px) and (max-width: 1099px) { body.dev-open .map-card { position: static; max-height: none; overflow-y: visible; } }
 .map-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border-bottom: 1px solid var(--line); }
 .toggle { display: flex; background: var(--panel-2); border-radius: 999px; padding: 3px; }
 .toggle button { font: 500 14px var(--sans); min-height: 38px; padding: 0 14px; border-radius: 999px; border: none; background: transparent; color: var(--muted); cursor: pointer; }
