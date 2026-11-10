@@ -103,7 +103,7 @@ main { max-width: 1240px; margin: 0 auto; padding: 28px 24px 12px; display: grid
 .stepper li.active { background: var(--fg); color: var(--bg); border-color: var(--fg); }
 .stepper li.active .num { background: #1E6B48; color: #fff; }
 
-.flow { display: flex; flex-wrap: wrap; gap: 26px; align-items: flex-start; }
+.flow { display: flex; flex-wrap: wrap; gap: 26px; align-items: flex-start; scroll-margin-top: calc(var(--top-h, 62px) + 12px); }
 .steps { flex: 999 1 560px; min-width: 0; }
 .step { display: grid; gap: 14px; }
 .step .sub { margin: -6px 0 0; color: var(--fg-2); }

@@ -467,7 +467,10 @@
       li.className = name === s ? 'active' : i < STEPS.indexOf(s) ? 'done' : '';
       if (name === s) li.setAttribute('aria-current', 'step'); else li.removeAttribute('aria-current');
     });
-    if (scroll) $('stepper').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // With the map beside the steps (wide screens), to the top of both columns: the map card
+    // cannot move further down than the steps column, so scrolling to the stepper alone could
+    // put the card's top (the report) under the header. The stepper stays in view there too.
+    if (scroll) (window.matchMedia('(min-width: 1040px)').matches ? document.querySelector('.flow') : $('stepper')).scrollIntoView({ behavior: 'smooth', block: 'start' });
     renderMapReport();
     routeForStep();
   }
