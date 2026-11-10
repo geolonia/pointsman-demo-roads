@@ -1484,11 +1484,19 @@
       el('pre', { text: q.method + ' ' + url + '\nNGSILD-Tenant: ' + q.tenant + '\nLink: <' + q.link + '>; rel="http://www.w3.org/ns/json-ld#context"; type="application/ld+json"' })]));
   }
 
+  var howPressOutside = false;
+  function outsideDialog(e) {
+    var b = $('how').getBoundingClientRect();
+    return e.clientX < b.left || e.clientX > b.right || e.clientY < b.top || e.clientY > b.bottom;
+  }
+
   function setHow(open) {
     var d = $('how');
     // Browsers without <dialog> (Safari before 15.4): shown in place, without the modal.
-    if (open && !d.open) { renderHowGraph(); if (d.showModal) d.showModal(); else d.setAttribute('open', ''); }
-    if (!open && d.open) { if (d.close) d.close(); else d.removeAttribute('open'); }
+    // The attribute, not .open: without <dialog> support (Safari before 15.4) there is no .open.
+    var shown = d.hasAttribute('open');
+    if (open && !shown) { renderHowGraph(); if (d.showModal) d.showModal(); else d.setAttribute('open', ''); }
+    if (!open && shown) { if (d.close) d.close(); else d.removeAttribute('open'); }
     $('how-toggle').setAttribute('aria-expanded', String(open));
     $('how-open').setAttribute('aria-expanded', String(open));
   }
@@ -1933,15 +1941,16 @@
     applyTheme(map);
     try { localStorage.setItem('theme', next); } catch (e) {}
   });
-  $('how-toggle').addEventListener('click', function () { setHow(!$('how').open); });
+  $('how-toggle').addEventListener('click', function () { setHow(!$('how').hasAttribute('open')); });
   // Escape closes the dialog by itself; so does a click on the dark area around it.
   $('how').addEventListener('close', function () { $('how-toggle').setAttribute('aria-expanded', 'false'); $('how-open').setAttribute('aria-expanded', 'false'); });
   $('how').addEventListener('click', function (e) {
-    // Only a click on the dark area: the dialog itself (its padding too) is the target as well.
-    if (e.target !== e.currentTarget) return;
-    var b = e.currentTarget.getBoundingClientRect();
-    if (e.clientX < b.left || e.clientX > b.right || e.clientY < b.top || e.clientY > b.bottom) setHow(false);
+    // Only a click on the dark area: the dialog itself (its padding too) is the target as well,
+    // and a text selection that ends outside must not close it (the press started inside).
+    if (e.target !== e.currentTarget || !howPressOutside) return;
+    if (outsideDialog(e)) setHow(false);
   });
+  $('how').addEventListener('pointerdown', function (e) { howPressOutside = e.target === e.currentTarget && outsideDialog(e); });
   $('activity-toggle').addEventListener('click', function () { setActivity($('activity').hidden); });
   $('activity-close').addEventListener('click', function () { setActivity(false); $('activity-toggle').focus(); });
   $('how-close').addEventListener('click', function () { setHow(false); });
