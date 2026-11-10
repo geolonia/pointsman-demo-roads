@@ -173,7 +173,8 @@ main { max-width: 1240px; margin: 0 auto; padding: 28px 24px 12px; display: grid
 @keyframes pulse { from { opacity: 0.35; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .timeline li.active .mark { animation: none; } }
 .qa { display: grid; }
-.qa .row { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); align-items: center; gap: 4px 16px; padding: 8px 0; border-top: 1px solid var(--line); }
+.qa .row { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(130px, 0.9fr); align-items: center; gap: 4px 16px; padding: 8px 0; border-top: 1px solid var(--line); }
+@media (max-width: 640px) { .qa .row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .qa .pcol { grid-column: 1 / -1; } }
 /* The question (and its rule tag) on the left; the answer with its chips on the right, kept together. */
 .qa .qcol { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
 .qa .acol { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 6px 10px; text-align: right; min-width: 0; }
@@ -258,7 +259,10 @@ pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 
 .swatch.flood { background: #FFD8C0; border: 1px solid #FFB7B7; opacity: 0.75; }
 
 /* How it works */
-.how { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 24px; display: grid; gap: 20px; scroll-margin-top: 80px; }
+.how { background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 16px; padding: 24px; gap: 20px;
+  width: min(1000px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); overflow: auto; box-sizing: border-box; }
+.how[open] { display: grid; }
+.how::backdrop { background: rgba(0, 0, 0, 0.5); }
 .how-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
 .how-head p { margin: 6px 0 0; max-width: 72ch; color: var(--fg-2); }
 .how-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
@@ -398,3 +402,9 @@ body.resizing { cursor: col-resize; user-select: none; }
 .map-report #map-report-title:empty, .map-report #map-report-place:empty { display: none; }
 /* The report itself is the key information: large, with a bar like a quote. */
 .map-report blockquote { margin: 10px 0 0; padding: 2px 0 2px 12px; border-left: 3px solid var(--fg); font-size: 1.02rem; line-height: 1.5; color: var(--fg); }
+
+/* The answer's probability as a bar (as in the buildings demo). */
+.pcol { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--fg-2); }
+.pbar { flex: 1 1 60px; min-width: 50px; max-width: 160px; height: 8px; border-radius: 4px; background: var(--panel-2); overflow: hidden; }
+.pbar i { display: block; height: 100%; background: var(--i-map); }
+.pbar.danger i { background: var(--red); }
