@@ -12,7 +12,7 @@
 
   var T = {
     en: {
-      demo: 'roads demo', title: 'Heavy rain. Reports of closed roads are coming in.',
+      demo: 'roads demo', title: 'Heavy rain. Closed roads are reported.',
       lead: 'Send one, and watch Pointsman decide in seconds what happens to it. It reads the report, checks the place on public maps, and applies the city’s rules.',
       st1: 'Pick a report', st2: 'First check', st3: 'Additional check', st4: 'Final result',
       howTitle: 'How it works', close: 'Close',
