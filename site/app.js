@@ -12,7 +12,7 @@
 
   var T = {
     en: {
-      demo: 'roads demo', title: 'Heavy rain. Reports of closed roads are coming in.',
+      demo: 'roads demo', title: 'Heavy rain. Closed roads are reported.',
       lead: 'Send one, and watch Pointsman decide in seconds what happens to it. It reads the report, checks the place on public maps, and applies the city’s rules.',
       st1: 'Pick a report', st2: 'First check', st3: 'Additional check', st4: 'Final result',
       howTitle: 'How it works', close: 'Close',
@@ -472,7 +472,7 @@
     // With the map card beside the steps, to the top of both columns: the card cannot
     // move further down than the steps column, so scrolling to the stepper alone could put the
     // card's top (the report) under the header; the stepper stays in view there too. Otherwise
-    // (narrow screens, the bottom drawer open, a short window) to the stepper.
+    // (narrow screens, a side panel open below 1600 px) to the stepper.
     var card = document.querySelector('.map-card');
     // Beside the steps: sticky, and on the same row (with a side panel open the card wraps below).
     var beside = getComputedStyle(card).position === 'sticky' && card.getBoundingClientRect().left >= document.querySelector('.steps').getBoundingClientRect().right;
