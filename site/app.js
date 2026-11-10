@@ -467,8 +467,17 @@
       li.className = name === s ? 'active' : i < STEPS.indexOf(s) ? 'done' : '';
       if (name === s) li.setAttribute('aria-current', 'step'); else li.removeAttribute('aria-current');
     });
-    if (scroll) $('stepper').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // With the map card beside the steps, to the top of both columns: the card cannot
+    // move further down than the steps column, so scrolling to the stepper alone could put the
+    // card's top (the report) under the header; the stepper stays in view there too. Otherwise
+    // (narrow screens, the bottom drawer open, a short window) to the stepper.
+    var card = document.querySelector('.map-card');
+    // Beside the steps: sticky, and on the same row (with a side panel open the card wraps below).
+    var beside = getComputedStyle(card).position === 'sticky' && card.getBoundingClientRect().left >= document.querySelector('.steps').getBoundingClientRect().right;
+    if (scroll) (beside ? document.querySelector('.flow') : $('stepper')).scrollIntoView({ behavior: 'smooth', block: 'start' });
     renderMapReport();
+    // The card scrolls inside when it is taller than the window: show its top (the report) again.
+    card.scrollTop = 0;
     routeForStep();
   }
 
