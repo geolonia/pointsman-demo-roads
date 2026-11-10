@@ -1486,8 +1486,9 @@
 
   function setHow(open) {
     var d = $('how');
-    if (open && !d.open) { renderHowGraph(); d.showModal(); }
-    if (!open && d.open) d.close();
+    // Browsers without <dialog> (Safari before 15.4): shown in place, without the modal.
+    if (open && !d.open) { renderHowGraph(); if (d.showModal) d.showModal(); else d.setAttribute('open', ''); }
+    if (!open && d.open) { if (d.close) d.close(); else d.removeAttribute('open'); }
     $('how-toggle').setAttribute('aria-expanded', String(open));
     $('how-open').setAttribute('aria-expanded', String(open));
   }
@@ -1935,7 +1936,12 @@
   $('how-toggle').addEventListener('click', function () { setHow(!$('how').open); });
   // Escape closes the dialog by itself; so does a click on the dark area around it.
   $('how').addEventListener('close', function () { $('how-toggle').setAttribute('aria-expanded', 'false'); $('how-open').setAttribute('aria-expanded', 'false'); });
-  $('how').addEventListener('click', function (e) { if (e.target === e.currentTarget) setHow(false); });
+  $('how').addEventListener('click', function (e) {
+    // Only a click on the dark area: the dialog itself (its padding too) is the target as well.
+    if (e.target !== e.currentTarget) return;
+    var b = e.currentTarget.getBoundingClientRect();
+    if (e.clientX < b.left || e.clientX > b.right || e.clientY < b.top || e.clientY > b.bottom) setHow(false);
+  });
   $('activity-toggle').addEventListener('click', function () { setActivity($('activity').hidden); });
   $('activity-close').addEventListener('click', function () { setActivity(false); $('activity-toggle').focus(); });
   $('how-close').addEventListener('click', function () { setHow(false); });
