@@ -191,7 +191,7 @@ function bridgeConfig(env: Env): BridgeConfig {
 async function notify(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const response = await handleRequest(request, bridgeConfig(env));
   // With the queue the answer is 202 and the queue handler does the rest;
-  // an entity too large to queue is handled here (200 or 502).
+  // without BRIDGE_QUEUE the entity is handled here (200 or 502).
   // A 502 without `handled` means the queue refused the notification.
   if (response.status === 200 || response.status === 502) {
     const { handled } = (await response.clone().json()) as { handled?: EntityResult[] };

@@ -91,8 +91,9 @@ Deploy order for the final step: Pointsman first (pointsman-config, with
 then this Worker, then `node scripts/setup.mjs` for the new subscription.
 Without the profile, the final result's requests are refused and not retried.
 
-No notification gets lost (pointsman#88). The Worker puts each notified
-entity on a queue (`pointsman-demo-bridge`) and answers the broker at once.
+No notification gets lost (pointsman#88). The Worker puts the id and type of
+each notified entity on a queue (`pointsman-demo-bridge`) and answers the broker
+at once; the queue handler reads the entity from the broker.
 The Worker's queue handler then runs items 2 to 5 and 7 above. Item 5 runs only
 from the queue, one message at a time, so the newest final result is
 always written last.
