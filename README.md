@@ -224,7 +224,7 @@ Settings are in [wrangler.jsonc](wrangler.jsonc). Secrets (`wrangler secret put 
 | `POINTSMAN_TOKEN` | A Pointsman token limited to `road-restriction-check`, `evacuation-access-check` and `road-closure-final` |
 | `BROKER_API_KEY` | 1Password `geonicdb-production-geolonia-demo` / `geonicdb-production-geolonia-demo-pointsman_demo-apikey` |
 | `NOTIFY_SECRET` | Random; every subscription sends it (`scripts/setup.mjs`) |
-| `GITHUB_WEBHOOK_SECRET` | 1Password `geolonia-ops` / `pointsman-demo-roads-github-app` (field `credential`) |
+| `GITHUB_WEBHOOK_SECRET` | 1Password `pointsman` / `pointsman-demo-roads-github-app` (field `credential`) |
 | `GITHUB_APP_PRIVATE_KEY` | Same item, the private key converted to PKCS#8: `openssl pkcs8 -topk8 -nocrypt` |
 | `TURNSTILE_SECRET` | Optional |
 
