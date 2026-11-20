@@ -8,7 +8,7 @@ Source map:
 - `src/work-orders.json` = status name -> publish/reject for completed Task entities.
 - `site/` = the page (plain HTML/CSS/JS, no build); `site/_headers` = CSP, checked by `test/headers.test.ts`.
 - `scripts/` = `fetch-engine.mjs` (`pnpm engine`), `setup.mjs` (broker subscriptions, labels), `resolve.mjs`, `work-order.mjs`, `check-examples.mjs`, `deploy-config.mjs` (builds git-ignored `wrangler.deploy.json`).
-- `wrangler.jsonc` = Worker config; resource ids are kept out of it (filled in at deploy).
+- `wrangler.jsonc` = Worker config; the KV id is kept out of it and filled in at deploy (`scripts/deploy-config.mjs`).
 
 Cross-repo:
 - `engine.json` pins a geolonia/pointsman commit; `engine/` (git-ignored) is its checkout or a link to a local clone. `src/` imports the bridge from `engine/packages/fiware/src/bridge`, so typecheck and tests need `engine/`.
