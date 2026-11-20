@@ -215,10 +215,11 @@ Same origin as the page; other origins must be listed in `ALLOWED_ORIGINS`.
   from another host must be added there; `pnpm test` checks the page against it.
 - Everything is deleted after a day, by the hourly cleanup: reports with
   their Decision, Task and Alert entities, the issues (closed), and the
-  reviews still pending in Pointsman (closed as superseded, so the page's
-  "still waiting" count matches its list). A report that cannot be deleted
-  is logged and tried again the next hour; the rest goes on. Do not write
-  personal data.
+  reviews of those reports still pending in Pointsman (closed as
+  superseded, so the page's "still waiting" count matches its list; any
+  pending review older than a day is closed too). What fails (a report, an
+  issue GitHub does not close, a review) is logged and tried again the next
+  hour; the rest goes on. Do not write personal data.
 - A prepared report's entity carries `demoReport` (`{"prepared": "<id>"}`,
   plus `"noIssue": "visitor"` past the visitor's issue limit), the demo's own
   attribute. The queue consumer reads it to know whether to open an issue:

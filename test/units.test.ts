@@ -5,6 +5,7 @@ import { appJwt, verifyWebhook } from '../src/github';
 import { factsOf, summarize } from '../src/index';
 import { AREA, PREPARED, parseReport, toEntity } from '../src/reports';
 import { mayReview, parseCommand } from '../src/review';
+import { trimUrl } from '../src/env';
 import { visitorKey } from '../src/limits';
 // @ts-expect-error plain JavaScript without types
 import { checkExamples, report } from '../scripts/lib/examples-check.mjs';
@@ -314,5 +315,13 @@ describe('the weekly examples check, failures', () => {
     expect(r.ok).toBe(false);
     // No rule in the answer: the default rule.
     expect(r.markdown).toContain('| default |');
+  });
+});
+
+describe('trimUrl', () => {
+  it('removes trailing slashes only', () => {
+    expect(trimUrl('https://example.test///')).toBe('https://example.test');
+    expect(trimUrl('https://example.test/a/b')).toBe('https://example.test/a/b');
+    expect(trimUrl('///')).toBe('');
   });
 });

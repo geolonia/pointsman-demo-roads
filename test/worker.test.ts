@@ -39,6 +39,7 @@ beforeEach(async () => {
     if (c.url.startsWith('https://api.github.com/')) return Response.json({});
     // No pending reviews unless a test says so (the cleanup closes old ones, #115).
     if (c.method === 'GET' && c.url.startsWith('https://pointsman.geolonia.workers.dev/v1/reviews?')) return Response.json({ reviews: [] });
+    if (c.method === 'POST' && /\/v1\/reviews\/[^/]+\/close$/.test(c.url)) return Response.json({ error: 'not_pending' }, { status: 409 });
     if (c.url === `${BROKER}/entities` && c.method === 'POST') return new Response(null, { status: 201 });
     if (c.url.includes('/attrs')) return new Response(null, { status: 204 });
     return new Response('unexpected', { status: 599 });
@@ -479,6 +480,8 @@ describe('notifications (the bridge)', () => {
     await env.DEMO.put(`report:${report.id}`, JSON.stringify({ createdAt: new Date().toISOString() }));
     pointsmanSays('urgent');
     expect((await notify()).status).toBe(200);
+    // Let the first report's steps after the answer finish before its record changes.
+    await new Promise((r) => setTimeout(r, 50));
     pointsmanSays('publish');
     await env.DEMO.put(`report:${report.id}`, JSON.stringify({ prepared: 'flooded-underpass', createdAt: new Date().toISOString() }));
     expect((await notify()).status).toBe(200);
@@ -859,7 +862,7 @@ describe('cleanup when something fails (#114) and old reviews (#115)', () => {
     answer = (c) => {
       if (c.method === 'GET' && c.url.includes('/entities?type=RoadRestriction')) return Response.json([]);
       if (c.method === 'GET' && c.url === 'https://pointsman.geolonia.workers.dev/v1/reviews?profile=road-restriction-check') {
-        return Response.json({ reviews: [{ decision_id: 'r-old', created_at: old() }, { decision_id: 'r-gone', created_at: old() }, { decision_id: 'r-new', created_at: recent }] });
+        return Response.json({ reviews: [{ decision_id: 'r-old', created_at: old() }, { decision_id: 'r-gone', created_at: old() }, { decision_id: 'r-other', created_at: old() }, { decision_id: 'r-new', created_at: recent }] });
       }
       if (c.method === 'GET' && c.url === 'https://pointsman.geolonia.workers.dev/v1/reviews?profile=evacuation-access-check') {
         return Response.json({ reviews: [{ decision_id: 'e-old', created_at: old() }] });
@@ -867,14 +870,70 @@ describe('cleanup when something fails (#114) and old reviews (#115)', () => {
       const close = c.url.match(/\/v1\/reviews\/([^/]+)\/close$/);
       if (c.method === 'POST' && close) {
         closes.push(close[1]!);
-        // Resolved meanwhile: not pending any more, nothing to do.
-        return close[1] === 'r-gone' ? Response.json({ error: 'not_pending' }, { status: 409 }) : Response.json({ decision_id: close[1], status: 'superseded' });
+        // Resolved meanwhile (409), or another client's decision (404): nothing to do.
+        if (close[1] === 'r-gone') return Response.json({ error: 'not_pending' }, { status: 409 });
+        if (close[1] === 'r-other') return Response.json({ error: 'not_found' }, { status: 404 });
+        return Response.json({ decision_id: close[1], status: 'superseded' });
       }
       return undefined;
     };
     expect(await cleanup(env)).toEqual({ deleted: 0, closed: 0, reviewsClosed: 2, failed: 0 });
-    expect(closes).toEqual(['r-old', 'r-gone', 'e-old']);
+    expect(closes).toEqual(['r-old', 'r-gone', 'r-other', 'e-old']);
     expect(calls.find((c) => c.url.endsWith('/v1/reviews/r-old/close'))?.headers.get('authorization')).toBe(`Bearer ${env.POINTSMAN_TOKEN}`);
+  });
+
+  it('closes the reviews of a deleted report at once, also one younger than a day', async () => {
+    const closes: string[] = [];
+    answer = (c) => {
+      if (c.method === 'GET' && c.url.includes('/entities?type=RoadRestriction')) {
+        return Response.json([{ id: 'urn:ngsi-ld:RoadRestriction:demo-a', type: 'RoadRestriction', createdAt: old(),
+          check: { type: 'Property', value: 'review', decision: { type: 'Relationship', object: 'urn:ngsi-ld:Decision:d-a' } },
+          evacuation: { type: 'Property', value: 'review', decision: { type: 'Relationship', object: 'urn:ngsi-ld:Decision:e-a' } } }]);
+      }
+      if (c.method === 'GET' && c.url.endsWith(encodeURIComponent('urn:ngsi-ld:Decision:e-a'))) return Response.json({ id: 'urn:ngsi-ld:Decision:e-a', type: 'Decision' });
+      if (c.method === 'DELETE') return new Response(null, { status: 204 });
+      const close = c.url.match(/\/v1\/reviews\/([^/]+)\/close$/);
+      if (c.method === 'POST' && close) {
+        closes.push(close[1]!);
+        return Response.json({ decision_id: close[1], status: 'superseded' });
+      }
+      return undefined;
+    };
+    // Step 2's review came hours after the report: the list says it is young.
+    expect(await cleanup(env)).toEqual({ deleted: 1, closed: 0, reviewsClosed: 2, failed: 0 });
+    expect(closes).toEqual(['d-a', 'e-a']);
+  });
+
+  it('still closes old issues and reviews when the broker cannot list the reports', async () => {
+    const closes: string[] = [];
+    answer = (c) => {
+      if (c.method === 'GET' && c.url.includes('/entities?type=RoadRestriction')) return new Response('down', { status: 503 });
+      if (c.method === 'GET' && c.url.endsWith('/v1/reviews?profile=road-restriction-check')) return Response.json({ reviews: [{ decision_id: 'r-old', created_at: old() }] });
+      const close = c.url.match(/\/v1\/reviews\/([^/]+)\/close$/);
+      if (c.method === 'POST' && close) {
+        closes.push(close[1]!);
+        return Response.json({ decision_id: close[1], status: 'superseded' });
+      }
+      return undefined;
+    };
+    await env.DEMO.put('issue:9', JSON.stringify({ decision: 'd-1', entity: 'e', action: 'review', corrections: [], createdAt: old() }));
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await cleanup(env)).toEqual({ deleted: 0, closed: 1, reviewsClosed: 1, failed: 1 });
+    expect(closes).toEqual(['r-old']);
+    expect(errors).toHaveBeenCalledWith(expect.stringContaining('cleanup: listing the reports'));
+  });
+
+  it('keeps the issue record when GitHub refuses the close, so the next hour tries again', async () => {
+    answer = (c) => {
+      if (c.method === 'GET' && c.url.includes('/entities?type=RoadRestriction')) return Response.json([]);
+      if (c.method === 'PATCH' && c.url.endsWith('/issues/9')) return new Response(null, { status: 502 });
+      return undefined;
+    };
+    await env.DEMO.put('issue:9', JSON.stringify({ decision: 'd-1', entity: 'e', action: 'review', corrections: [], createdAt: old() }));
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await cleanup(env)).toMatchObject({ closed: 0, failed: 1 });
+    expect(await env.DEMO.get('issue:9')).not.toBeNull();
+    expect(errors).toHaveBeenCalledWith(expect.stringContaining('cleanup: issue 9'));
   });
 
   it('counts a failed review list or close as failed, and goes on', async () => {
@@ -953,6 +1012,16 @@ describe("the bridge's queue (pointsman#88)", () => {
     await consume(m);
     expect(m.ack).toHaveBeenCalled();
     expect(calls.find((c) => c.url.endsWith('/repos/geolonia/pointsman-demo-roads/issues'))?.body.labels).toEqual(['demo', 'urgent']);
+  });
+
+  it('reads demoReport also expanded with the default vocabulary (#113)', async () => {
+    pointsmanSays('urgent');
+    const first = answer;
+    answer = (c) => (c.method === 'GET' && c.url.startsWith(`${BROKER}/entities/${encodeURIComponent(report.id)}`)
+      ? Response.json({ ...report, 'https://uri.etsi.org/ngsi-ld/default-context/demoReport': P({ prepared: 'fallen-tree' }) })
+      : first(c));
+    await consume(message({ path: '/notify', entity: report }));
+    expect(calls.some((c) => c.url.endsWith('/repos/geolonia/pointsman-demo-roads/issues'))).toBe(true);
   });
 
   it('keeps the visitor limit from the entity when KV does not show the record (#113)', async () => {
