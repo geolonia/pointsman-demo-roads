@@ -79,6 +79,12 @@ const VISITOR_ISSUES = 2;
  * key, that visitor may decide the report themselves (resolved: their answer).
  */
 interface ReportRecord { prepared?: string; createdAt: string; keyHash?: string; resolved?: string; noIssue?: 'visitor' }
+/**
+ * On the entity of a prepared report (attribute demoReport): which one, and
+ * whether the visitor limit keeps it from opening an issue. The broker shows
+ * it in every location at once; KV can show the record a minute late (#113).
+ */
+interface DemoReport { prepared: string; noIssue?: 'visitor' }
 interface IssueRecord { decision: string; entity: string; action: string; corrections: Correction[]; createdAt: string }
 interface Correction { name: string; value: string | boolean; by: string; at: string }
 
@@ -109,7 +115,9 @@ export default {
 
   async scheduled(_event: ScheduledController, env: Env): Promise<void> {
     checkEnv(env);
-    await cleanup(env);
+    const result = await cleanup(env);
+    // Each failure was logged on its own; one line says the run was not clean.
+    if (result.failed > 0) console.error(`cleanup: ${result.failed} failed (${JSON.stringify(result)})`);
   },
 
   // The bridge's queue (pointsman#88): what /notify and /reviews put on
@@ -266,20 +274,37 @@ async function createAlert(env: Env, entityId: string, decision: string, attempt
   });
 }
 
-async function openIssue(env: Env, entityId: string, decision: string, action: string): Promise<void> {
-  const report = await env.DEMO.get<ReportRecord>(`report:${entityId}`, 'json');
-  // Free text from visitors never goes to GitHub: only prepared reports.
-  if (!report?.prepared) return;
-  // This visitor's reports already opened their issues for today (#111).
-  if (report.noIssue === 'visitor') {
-    console.warn(`issue for ${decision}: no issue, the visitor reached ${VISITOR_ISSUES} issues today`);
-    return;
-  }
+async function openIssue(env: Env, entityId: string, decision: string, action: string, attempts = 3, pauseMs = 1000): Promise<void> {
   // A retried notification must not open a second issue.
   // Workers KV takes one write per second per key, so the in-flight marker and
   // the final record are different keys, each written once.
   const [opened, inFlight] = await Promise.all([env.DEMO.get(`decision-issue:${decision}`), env.DEMO.get(`decision-pending:${decision}`)]);
   if (opened || inFlight) return;
+  // The queue does not retry a failure here (the decision is written), so a
+  // broker that does not answer at once gets two more tries.
+  let entity: Entity | null = null;
+  for (let i = 0; i < attempts && !entity; i++) {
+    if (i > 0) await new Promise((r) => setTimeout(r, pauseMs));
+    entity = await new Broker(env).getRoadRestriction(entityId).catch((err) => {
+      if (i === attempts - 1) throw err;
+      return null;
+    });
+  }
+  if (!entity) throw new Error('report not found in the broker');
+  // The entity says whether the report is prepared (#113). Reports from
+  // before demoReport was written have only the KV record.
+  const report: DemoReport | ReportRecord | null = demoReportOf(entity) ?? await env.DEMO.get<ReportRecord>(`report:${entityId}`, 'json');
+  if (!report) {
+    console.warn(`issue for ${decision}: no record of the report ${entityId}, so no issue`);
+    return;
+  }
+  // Free text from visitors never goes to GitHub: only prepared reports.
+  if (!report.prepared) return;
+  // This visitor's reports already opened their issues for today (#111).
+  if (report.noIssue === 'visitor') {
+    console.warn(`issue for ${decision}: no issue, the visitor reached ${VISITOR_ISSUES} issues today`);
+    return;
+  }
   // Short-lived (60 s is the KV minimum): only guards against parallel retries.
   await env.DEMO.put(`decision-pending:${decision}`, '1', { expirationTtl: 60 });
   // Already decided (a visitor can answer within seconds): no issue. Pointsman
@@ -305,7 +330,7 @@ async function openIssue(env: Env, entityId: string, decision: string, action: s
   }
   let issue: Issue;
   try {
-    issue = await createIssueFor(env, entityId, decision, action);
+    issue = await createIssueFor(env, entity, decision, action);
   } catch (err) {
     // No issue was created: let a retried notification try again (if this
     // delete is refused, the marker expires within a minute anyway).
@@ -340,9 +365,18 @@ async function decidedIn(env: Env, decision: string, when: string): Promise<Poin
 /** The marker createIssueFor puts in each issue body, to find an issue by its decision. */
 const issueMarker = (decision: string) => `<!-- decision: ${decision} entity: `;
 
-async function createIssueFor(env: Env, entityId: string, decision: string, action: string): Promise<Issue> {
-  const entity = await new Broker(env).getRoadRestriction(entityId);
-  if (!entity) throw new Error('report not found in the broker');
+/** The demoReport attribute of a prepared report's entity; null when there is none. */
+function demoReportOf(entity: Entity): DemoReport | null {
+  // The term is not in the transportation context: a broker may give it
+  // back expanded with the core context's default vocabulary.
+  const attr = entity.demoReport ?? entity['https://uri.etsi.org/ngsi-ld/default-context/demoReport'];
+  const value = (attr as { value?: unknown } | undefined)?.value as Partial<DemoReport> | undefined;
+  if (typeof value?.prepared !== 'string') return null;
+  return { prepared: value.prepared, ...(value.noIssue === 'visitor' && { noIssue: 'visitor' as const }) };
+}
+
+async function createIssueFor(env: Env, entity: Entity, decision: string, action: string): Promise<Issue> {
+  const entityId = entity.id;
   const r = summarize(entity);
   const answers = Object.entries(r.check?.answers ?? {})
     .map(([name, a]) => `| ${name} | \`${String(a.value)}\` | ${a.p === undefined ? '' : a.p.toFixed(2)} |`).join('\n');
@@ -739,10 +773,10 @@ async function api(request: Request, url: URL, env: Env, ctx: ExecutionContext):
     const visitorSlot = forPerson ? await visitors.take(`issues:${visitorKey(ip)}`, VISITOR_ISSUES).catch(() => ({ ok: false })) : null;
     // Lets this visitor decide the report later, if it waits for a person.
     const key = crypto.randomUUID();
-    const record: ReportRecord = {
-      ...(prepared && { prepared }), createdAt: new Date().toISOString(), keyHash: await sha256(key),
-      ...(visitorSlot?.ok === false && { noIssue: 'visitor' as const }),
-    };
+    const noIssue = visitorSlot?.ok === false ? { noIssue: 'visitor' as const } : {};
+    const record: ReportRecord = { ...(prepared && { prepared }), createdAt: new Date().toISOString(), keyHash: await sha256(key), ...noIssue };
+    // The same on the entity, which the queue consumer reads in any location (#113).
+    if (prepared) entity.demoReport = { type: 'Property', value: { prepared, ...noIssue } satisfies DemoReport };
     try {
       // Before the entity: the notification may arrive before this call returns.
       await env.DEMO.put(`report:${entity.id}`, JSON.stringify(record), { expirationTtl: KV_TTL });
@@ -1026,51 +1060,177 @@ export function summarize(e: Entity): Summary {
 
 // --- Cleanup -----------------------------------------------------------------------
 
-/** Deletes reports and their Decision, Task and Alert entities after a day, and closes their issues. */
-export async function cleanup(env: Env, now = Date.now()): Promise<{ deleted: number; closed: number }> {
+/**
+ * Deletes reports and their Decision, Task and Alert entities after a day,
+ * closes their issues, and closes their reviews in Pointsman (#115). A
+ * failure is logged and counted, and the run goes on (#114): what failed
+ * stays and is tried again the next hour.
+ */
+export async function cleanup(env: Env, now = Date.now()): Promise<{ deleted: number; closed: number; reviewsClosed: number; failed: number }> {
   const broker = new Broker(env);
   let deleted = 0;
-  for (const e of await broker.listRoadRestrictions()) {
+  let closed = 0;
+  let reviewsClosed = 0;
+  let failed = 0;
+  const fail = (what: string, err: unknown) => {
+    console.error(`cleanup: ${what}: ${(err as Error).message}`);
+    failed += 1;
+  };
+  let reports: Entity[] = [];
+  try {
+    reports = await broker.listRoadRestrictions();
+  } catch (err) {
+    fail('listing the reports', err);
+  }
+  for (const e of reports) {
     const created = Date.parse(String(e.createdAt ?? ''));
     if (!(now - created > KEEP_MS)) continue;
-    const decision = ((e.check as Attr | undefined)?.decision as Attr | undefined)?.object;
-    if (typeof decision === 'string') await broker.delete(decision);
-    // Extra data: a Task that cannot be deleted must not keep the report.
-    const taskId = await taskIdOf(e);
-    if (taskId) await broker.delete(taskId).catch((err) => console.error(`task cleanup: ${(err as Error).message}`));
-    // The additional check: its Decision entity and the Alert it raised, and
-    // the ones it replaced (it requires the first check, so a rerun replaces
-    // the earlier one), through their replaces links.
-    let second = ((e.evacuation as Attr | undefined)?.decision as Attr | undefined)?.object;
-    for (let i = 0; typeof second === 'string' && i < 50; i += 1) {
-      const replaced = await replacedBy(env, broker, second);
-      await broker.delete(second);
-      await broker.delete(alertId(second.split(':').pop()!));
-      second = replaced;
+    // The Decisions a person answers (steps 1 and 2): their reviews are closed below.
+    const reviewed: string[] = [];
+    try {
+      const decision = ((e.check as Attr | undefined)?.decision as Attr | undefined)?.object;
+      if (typeof decision === 'string') {
+        reviewed.push(decision);
+        await broker.delete(decision);
+      }
+      // Extra data: a Task that cannot be deleted must not keep the report.
+      const taskId = await taskIdOf(e);
+      if (taskId) await broker.delete(taskId).catch((err) => fail(`task ${taskId}`, err));
+      // The additional check: its Decision entity and the Alert it raised, and
+      // the ones it replaced (it requires the first check, so a rerun replaces
+      // the earlier one), through their replaces links.
+      let second = ((e.evacuation as Attr | undefined)?.decision as Attr | undefined)?.object;
+      for (let i = 0; typeof second === 'string' && i < 50; i += 1) {
+        reviewed.push(second);
+        const replaced = await replacedBy(env, broker, second);
+        await broker.delete(second);
+        await broker.delete(alertId(second.split(':').pop()!));
+        second = replaced;
+      }
+      // Step 3: its Decision entity, and the ones it replaced (a rerun after a
+      // person answered step 1), through their replaces links.
+      let third = ((e.final as Attr | undefined)?.decision as Attr | undefined)?.object;
+      // Read the next link before deleting, so a failed delete leaves the rest
+      // reachable from the report on the next run (the report stays then).
+      for (let i = 0; typeof third === 'string' && i < 50; i += 1) {
+        const replaced = await replacedBy(env, broker, third);
+        await broker.delete(third);
+        third = replaced;
+      }
+      await broker.delete(e.id);
+      deleted += 1;
+    } catch (err) {
+      fail(e.id, err);
+      continue;
     }
-    // Step 3: its Decision entity, and the ones it replaced (a rerun after a
-    // person answered step 1), through their replaces links.
-    let third = ((e.final as Attr | undefined)?.decision as Attr | undefined)?.object;
-    // Read the next link before deleting, so a failed delete leaves the rest
-    // reachable from the report on the next run (the report stays then).
-    for (let i = 0; typeof third === 'string' && i < 50; i += 1) {
-      const replaced = await replacedBy(env, broker, third);
-      await broker.delete(third);
-      third = replaced;
+    // Nobody can answer them now. A review younger than the report (step 2
+    // after a late answer) would otherwise wait another day (#115).
+    for (const id of reviewed) {
+      const decision = id.split(':').pop()!;
+      try {
+        if (await closeReview(env, decision)) reviewsClosed += 1;
+      } catch (err) {
+        fail(`review ${decision}`, err);
+        // The report is gone, and the review may be younger than a day: kept
+        // here, so the next hour tries again.
+        await env.DEMO.put(`review-close:${decision}`, '1', { expirationTtl: KV_TTL }).catch(() => {});
+      }
     }
-    await broker.delete(e.id);
-    deleted += 1;
   }
-  let closed = 0;
+  // Closes that failed in an earlier run.
+  try {
+    for (const key of (await env.DEMO.list({ prefix: 'review-close:' })).keys) {
+      const decision = key.name.slice('review-close:'.length);
+      try {
+        if (await closeReview(env, decision)) reviewsClosed += 1;
+        await env.DEMO.delete(key.name);
+      } catch (err) {
+        fail(`review ${decision}`, err);
+      }
+    }
+  } catch (err) {
+    fail('listing the reviews to close again', err);
+  }
   const github = new GitHub(env);
-  for (const key of (await env.DEMO.list({ prefix: 'issue:' })).keys) {
-    const record = await env.DEMO.get<IssueRecord>(key.name, 'json');
-    // The issue's own time: the report's KV record may already have expired.
-    if (!record || now - Date.parse(record.createdAt) <= KEEP_MS) continue;
-    await github.comment(Number(key.name.slice(6)), 'Demo data deleted after a day; closing.').catch(() => {});
-    await github.close(Number(key.name.slice(6))).catch(() => {});
-    await env.DEMO.delete(key.name);
-    closed += 1;
+  let issueKeys: { name: string }[] = [];
+  try {
+    issueKeys = (await env.DEMO.list({ prefix: 'issue:' })).keys;
+  } catch (err) {
+    fail('listing the issues', err);
   }
-  return { deleted, closed };
+  for (const key of issueKeys) {
+    const number = Number(key.name.slice(6));
+    try {
+      const record = await env.DEMO.get<IssueRecord>(key.name, 'json');
+      // The issue's own time: the report's KV record may already have expired.
+      if (!record || now - Date.parse(record.createdAt) <= KEEP_MS) continue;
+      // A close GitHub refused keeps the record: the next hour tries again.
+      await github.close(number);
+      await github.comment(number, 'Demo data deleted after a day; closing.').catch(() => {});
+      await env.DEMO.delete(key.name);
+      closed += 1;
+    } catch (err) {
+      fail(`issue ${number}`, err);
+    }
+  }
+  const sweep = await closeOldReviews(env, now);
+  return { deleted, closed, reviewsClosed: reviewsClosed + sweep.closed, failed: failed + sweep.failed };
+}
+
+/**
+ * Closes a pending review in Pointsman (status superseded,
+ * docs/reviews.md#closing-a-review in pointsman). False when there is
+ * nothing to close: answered or closed already (409), or no review of this
+ * client (404).
+ */
+async function closeReview(env: Env, decision: string): Promise<boolean> {
+  const res = await fetchWithAgent(`${trimUrl(env.POINTSMAN_URL)}/v1/reviews/${encodeURIComponent(decision)}/close`, {
+    method: 'POST', headers: { authorization: `Bearer ${env.POINTSMAN_TOKEN}` },
+  });
+  if (res.ok) return true;
+  if (res.status === 409 || res.status === 404) return false;
+  throw new Error(`status ${res.status}`);
+}
+
+/** Pointsman lists at most this many pending reviews, oldest first. */
+const REVIEW_PAGE = 100;
+
+/**
+ * Pending reviews older than a day, closed: their reports are deleted, so
+ * nobody can answer them any more; open, they stayed in the page's "still
+ * waiting" count (#115). This catches the ones of reports deleted earlier,
+ * or whose close failed.
+ */
+async function closeOldReviews(env: Env, now: number): Promise<{ closed: number; failed: number }> {
+  let closed = 0;
+  let failed = 0;
+  // The two steps a person answers; step 3 is rules only.
+  for (const profile of [PROFILE, EVACUATION_ROUTE.profile]) {
+    // The list is oldest first: when a whole page was closed, the next may hold more.
+    for (let page = 0; page < 10; page += 1) {
+      let reviews: { decision_id: string; created_at: string }[];
+      try {
+        const res = await fetchWithAgent(`${trimUrl(env.POINTSMAN_URL)}/v1/reviews?profile=${profile}`, { headers: { authorization: `Bearer ${env.POINTSMAN_TOKEN}` } });
+        if (!res.ok) throw new Error(`status ${res.status}`);
+        ({ reviews } = (await res.json()) as { reviews: { decision_id: string; created_at: string }[] });
+      } catch (err) {
+        console.error(`cleanup: reviews of ${profile}: ${(err as Error).message}`);
+        failed += 1;
+        break;
+      }
+      let closedNow = 0;
+      for (const r of reviews) {
+        if (!(now - Date.parse(r.created_at) > KEEP_MS)) continue;
+        try {
+          if (await closeReview(env, r.decision_id)) closedNow += 1;
+        } catch (err) {
+          console.error(`cleanup: review ${r.decision_id}: ${(err as Error).message}`);
+          failed += 1;
+        }
+      }
+      closed += closedNow;
+      if (reviews.length < REVIEW_PAGE || closedNow === 0) break;
+    }
+  }
+  return { closed, failed };
 }

@@ -37,6 +37,9 @@ beforeEach(async () => {
     if (c.method === 'GET' && c.url.startsWith('https://api.github.com/repos/') && c.url.includes('/issues?')) return Response.json([]);
     if (c.method === 'GET' && /^https:\/\/api\.github\.com\/repos\/.+\/issues\/\d+$/.test(c.url)) return Response.json({ state: 'open' });
     if (c.url.startsWith('https://api.github.com/')) return Response.json({});
+    // No pending reviews unless a test says so (the cleanup closes old ones, #115).
+    if (c.method === 'GET' && c.url.startsWith('https://pointsman.geolonia.workers.dev/v1/reviews?')) return Response.json({ reviews: [] });
+    if (c.method === 'POST' && /\/v1\/reviews\/[^/]+\/close$/.test(c.url)) return Response.json({ error: 'not_pending' }, { status: 409 });
     if (c.url === `${BROKER}/entities` && c.method === 'POST') return new Response(null, { status: 201 });
     if (c.url.includes('/attrs')) return new Response(null, { status: 204 });
     return new Response('unexpected', { status: 599 });
@@ -71,6 +74,8 @@ describe('reports from the page', () => {
     expect(create.headers.get('ngsild-tenant')).toBe('pointsman_demo');
     expect(create.headers.get('link')).toContain('https://datamodels.jp/context/transportation/v1.jsonld');
     expect(create.body).toMatchObject({ id, type: 'RoadRestriction', roadName: P('紀尾井町通り') });
+    // Also on the entity, which every location reads at once (#113).
+    expect(create.body.demoReport).toEqual(P({ prepared: 'car-trapped' }));
     expect(await env.DEMO.get(`report:${id}`, 'json')).toMatchObject({ prepared: 'car-trapped' });
     expect(await used('reports')).toBe(1);
   });
@@ -181,6 +186,8 @@ describe('reports from the page', () => {
     expect((await send('flooded-underpass', '2001:db8:1:2::5')).status).toBe(201);
     const records = await Promise.all(ids.map((id) => env.DEMO.get<any>(`report:${id}`, 'json')));
     expect(records.map((r) => r.noIssue ?? null)).toEqual([null, null, 'visitor']);
+    const created = calls.filter((c) => c.url === `${BROKER}/entities` && c.method === 'POST').slice(0, 3);
+    expect(created.map((c) => c.body.demoReport.value.noIssue ?? null)).toEqual([null, null, 'visitor']);
     // Another visitor still gets theirs.
     const other = (await (await send('vague', '2001:db8:1:3::5')).json<{ id: string }>()).id;
     expect((await env.DEMO.get<any>(`report:${other}`, 'json')).noIssue).toBeUndefined();
@@ -469,9 +476,12 @@ describe('notifications (the bridge)', () => {
   });
 
   it('never opens an issue for free text, or for publish', async () => {
+    // Free text has no demoReport on the entity, and its KV record has no prepared.
     await env.DEMO.put(`report:${report.id}`, JSON.stringify({ createdAt: new Date().toISOString() }));
     pointsmanSays('urgent');
     expect((await notify()).status).toBe(200);
+    // Let the first report's steps after the answer finish before its record changes.
+    await new Promise((r) => setTimeout(r, 50));
     pointsmanSays('publish');
     await env.DEMO.put(`report:${report.id}`, JSON.stringify({ prepared: 'flooded-underpass', createdAt: new Date().toISOString() }));
     expect((await notify()).status).toBe(200);
@@ -640,7 +650,7 @@ describe('cleanup', () => {
     // The report's KV record may expire first: the issue keeps its own time.
     await env.DEMO.put('issue:9', JSON.stringify({ decision: 'd-old', entity: 'urn:ngsi-ld:RoadRestriction:demo-old', action: 'review', corrections: [], createdAt: old }));
     await env.DEMO.put('issue:10', JSON.stringify({ decision: 'd-new', entity: 'urn:ngsi-ld:RoadRestriction:demo-new', action: 'review', corrections: [], createdAt: new Date().toISOString() }));
-    expect(await cleanup(env)).toEqual({ deleted: 1, closed: 1 });
+    expect(await cleanup(env)).toEqual({ deleted: 1, closed: 1, reviewsClosed: 0, failed: 0 });
     // The first check's Decision and Task, the additional check's Decisions
     // and Alerts (also the one it replaced), then the report.
     expect(calls.filter((c) => c.method === 'DELETE').map((c) => decodeURIComponent(c.url.split('/entities/')[1]!))).toEqual(['urn:ngsi-ld:Decision:d-old', await taskEntityId('urn:ngsi-ld:RoadRestriction:demo-old', 'check', 'h-old'), 'urn:ngsi-ld:Decision:e-old', 'urn:ngsi-ld:Alert:demo-e-old', 'urn:ngsi-ld:Decision:e-older', 'urn:ngsi-ld:Alert:demo-e-older', 'urn:ngsi-ld:Decision:e-oldest', 'urn:ngsi-ld:Alert:demo-e-oldest', 'urn:ngsi-ld:RoadRestriction:demo-old']);
@@ -662,7 +672,9 @@ describe('cleanup', () => {
       if (c.method === 'DELETE') return new Response(null, { status: 204 });
       return undefined;
     };
-    await expect(cleanup(env)).rejects.toThrow('pointsman decision read failed: 503');
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await cleanup(env)).toEqual({ deleted: 0, closed: 0, reviewsClosed: 0, failed: 1 });
+    expect(errors).toHaveBeenCalledWith(expect.stringContaining('pointsman decision read failed: 503'));
     // The report itself stays for the next run.
     expect(calls.some((c) => c.method === 'DELETE' && c.url.includes(encodeURIComponent('urn:ngsi-ld:RoadRestriction:demo-old')))).toBe(false);
   });
@@ -681,7 +693,7 @@ describe('cleanup', () => {
       if (c.method === 'DELETE') return new Response(null, { status: 204 });
       return undefined;
     };
-    expect(await cleanup(env)).toEqual({ deleted: 1, closed: 0 });
+    expect(await cleanup(env)).toEqual({ deleted: 1, closed: 0, reviewsClosed: 0, failed: 0 });
     expect(calls.filter((c) => c.method === 'DELETE').map((c) => decodeURIComponent(c.url.split('/entities/')[1]!)))
       .toEqual(['urn:ngsi-ld:Decision:f-2', 'urn:ngsi-ld:Decision:f-1', 'urn:ngsi-ld:RoadRestriction:demo-old']);
   });
@@ -695,7 +707,9 @@ describe('cleanup', () => {
       if (c.method === 'DELETE') return new Response(null, { status: c.url.includes('Task') ? 503 : 204 });
       return undefined;
     };
-    expect(await cleanup(env)).toEqual({ deleted: 1, closed: 0 });
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await cleanup(env)).toEqual({ deleted: 1, closed: 0, reviewsClosed: 0, failed: 1 });
+    expect(errors).toHaveBeenCalledWith(expect.stringContaining('cleanup: task '));
     expect(calls.some((c) => c.method === 'DELETE' && c.url.endsWith(encodeURIComponent('urn:ngsi-ld:RoadRestriction:demo-old')))).toBe(true);
   });
 });
@@ -798,6 +812,173 @@ describe('the chain (step 2)', () => {
 });
 
 
+describe('cleanup when something fails (#114) and old reviews (#115)', () => {
+  const old = () => new Date(Date.now() - 25 * 3600_000).toISOString();
+
+  it('goes on with the other reports and still closes old issues when one delete fails', async () => {
+    const created = old();
+    answer = (c) => {
+      if (c.method === 'GET' && c.url.includes('/entities?type=RoadRestriction')) {
+        return Response.json([
+          { id: 'urn:ngsi-ld:RoadRestriction:demo-a', type: 'RoadRestriction', createdAt: created, check: { type: 'Property', value: 'review', decision: { type: 'Relationship', object: 'urn:ngsi-ld:Decision:d-a' } } },
+          { id: 'urn:ngsi-ld:RoadRestriction:demo-b', type: 'RoadRestriction', createdAt: created },
+        ]);
+      }
+      if (c.method === 'DELETE') return new Response(null, { status: c.url.endsWith(encodeURIComponent('urn:ngsi-ld:Decision:d-a')) ? 503 : 204 });
+      return undefined;
+    };
+    await env.DEMO.put('issue:9', JSON.stringify({ decision: 'd-a', entity: 'urn:ngsi-ld:RoadRestriction:demo-a', action: 'review', corrections: [], createdAt: created }));
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await cleanup(env)).toMatchObject({ deleted: 1, closed: 1, failed: 1 });
+    const deletes = calls.filter((c) => c.method === 'DELETE').map((c) => decodeURIComponent(c.url.split('/entities/')[1]!));
+    // demo-a stays for the next run; demo-b after it is deleted.
+    expect(deletes).not.toContain('urn:ngsi-ld:RoadRestriction:demo-a');
+    expect(deletes).toContain('urn:ngsi-ld:RoadRestriction:demo-b');
+    expect(await env.DEMO.get('issue:9')).toBeNull();
+    expect(errors).toHaveBeenCalledWith(expect.stringContaining('cleanup: urn:ngsi-ld:RoadRestriction:demo-a'));
+  });
+
+  it('goes on with the other issues when closing one fails', async () => {
+    answer = (c) => {
+      if (c.method === 'GET' && c.url.includes('/entities?type=RoadRestriction')) return Response.json([]);
+      return undefined;
+    };
+    await env.DEMO.put('issue:9', JSON.stringify({ decision: 'd-1', entity: 'e', action: 'review', corrections: [], createdAt: old() }));
+    await env.DEMO.put('issue:10', JSON.stringify({ decision: 'd-2', entity: 'e', action: 'review', corrections: [], createdAt: old() }));
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    // KV refuses to delete one issue's record.
+    const kv = {
+      list: (o: KVNamespaceListOptions) => env.DEMO.list(o),
+      get: (k: string) => env.DEMO.get(k, 'json'),
+      delete: (k: string) => (k === 'issue:9' ? Promise.reject(new Error('kv down')) : env.DEMO.delete(k)),
+    };
+    const e = { ...env, DEMO: kv } as unknown as Env;
+    expect(await cleanup(e)).toMatchObject({ closed: 1, failed: 1 });
+    expect(await env.DEMO.get('issue:10')).toBeNull();
+    expect(errors).toHaveBeenCalledWith(expect.stringContaining('cleanup: issue 9: kv down'));
+  });
+
+  it('closes pending reviews older than a day in Pointsman, so the week numbers match the list', async () => {
+    const recent = new Date().toISOString();
+    const closes: string[] = [];
+    answer = (c) => {
+      if (c.method === 'GET' && c.url.includes('/entities?type=RoadRestriction')) return Response.json([]);
+      if (c.method === 'GET' && c.url === 'https://pointsman.geolonia.workers.dev/v1/reviews?profile=road-restriction-check') {
+        return Response.json({ reviews: [{ decision_id: 'r-old', created_at: old() }, { decision_id: 'r-gone', created_at: old() }, { decision_id: 'r-other', created_at: old() }, { decision_id: 'r-new', created_at: recent }] });
+      }
+      if (c.method === 'GET' && c.url === 'https://pointsman.geolonia.workers.dev/v1/reviews?profile=evacuation-access-check') {
+        return Response.json({ reviews: [{ decision_id: 'e-old', created_at: old() }] });
+      }
+      const close = c.url.match(/\/v1\/reviews\/([^/]+)\/close$/);
+      if (c.method === 'POST' && close) {
+        closes.push(close[1]!);
+        // Resolved meanwhile (409), or another client's decision (404): nothing to do.
+        if (close[1] === 'r-gone') return Response.json({ error: 'not_pending' }, { status: 409 });
+        if (close[1] === 'r-other') return Response.json({ error: 'not_found' }, { status: 404 });
+        return Response.json({ decision_id: close[1], status: 'superseded' });
+      }
+      return undefined;
+    };
+    expect(await cleanup(env)).toEqual({ deleted: 0, closed: 0, reviewsClosed: 2, failed: 0 });
+    expect(closes).toEqual(['r-old', 'r-gone', 'r-other', 'e-old']);
+    expect(calls.find((c) => c.url.endsWith('/v1/reviews/r-old/close'))?.headers.get('authorization')).toBe(`Bearer ${env.POINTSMAN_TOKEN}`);
+  });
+
+  it('closes the reviews of a deleted report at once, also one younger than a day', async () => {
+    const closes: string[] = [];
+    answer = (c) => {
+      if (c.method === 'GET' && c.url.includes('/entities?type=RoadRestriction')) {
+        return Response.json([{ id: 'urn:ngsi-ld:RoadRestriction:demo-a', type: 'RoadRestriction', createdAt: old(),
+          check: { type: 'Property', value: 'review', decision: { type: 'Relationship', object: 'urn:ngsi-ld:Decision:d-a' } },
+          evacuation: { type: 'Property', value: 'review', decision: { type: 'Relationship', object: 'urn:ngsi-ld:Decision:e-a' } } }]);
+      }
+      if (c.method === 'GET' && c.url.endsWith(encodeURIComponent('urn:ngsi-ld:Decision:e-a'))) return Response.json({ id: 'urn:ngsi-ld:Decision:e-a', type: 'Decision' });
+      if (c.method === 'DELETE') return new Response(null, { status: 204 });
+      const close = c.url.match(/\/v1\/reviews\/([^/]+)\/close$/);
+      if (c.method === 'POST' && close) {
+        closes.push(close[1]!);
+        return Response.json({ decision_id: close[1], status: 'superseded' });
+      }
+      return undefined;
+    };
+    // Step 2's review came hours after the report: the list says it is young.
+    expect(await cleanup(env)).toEqual({ deleted: 1, closed: 0, reviewsClosed: 2, failed: 0 });
+    expect(closes).toEqual(['d-a', 'e-a']);
+  });
+
+  it('tries a failed review close of a deleted report again the next hour', async () => {
+    let down = true;
+    const closes: string[] = [];
+    answer = (c) => {
+      if (c.method === 'GET' && c.url.includes('/entities?type=RoadRestriction')) {
+        return Response.json(down ? [{ id: 'urn:ngsi-ld:RoadRestriction:demo-a', type: 'RoadRestriction', createdAt: old(),
+          check: { type: 'Property', value: 'review', decision: { type: 'Relationship', object: 'urn:ngsi-ld:Decision:d-a' } } }] : []);
+      }
+      if (c.method === 'DELETE') return new Response(null, { status: 204 });
+      const close = c.url.match(/\/v1\/reviews\/([^/]+)\/close$/);
+      if (c.method === 'POST' && close) {
+        closes.push(close[1]!);
+        return down ? new Response('down', { status: 503 }) : Response.json({ decision_id: close[1], status: 'superseded' });
+      }
+      return undefined;
+    };
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    // The report is deleted; its review (younger than a day) could not be closed.
+    expect(await cleanup(env)).toMatchObject({ deleted: 1, reviewsClosed: 0 });
+    expect(await env.DEMO.get('review-close:d-a')).not.toBeNull();
+    down = false;
+    expect(await cleanup(env)).toEqual({ deleted: 0, closed: 0, reviewsClosed: 1, failed: 0 });
+    expect(closes.filter((d) => d === 'd-a').length).toBeGreaterThanOrEqual(2);
+    expect(await env.DEMO.get('review-close:d-a')).toBeNull();
+  });
+
+  it('still closes old issues and reviews when the broker cannot list the reports', async () => {
+    const closes: string[] = [];
+    answer = (c) => {
+      if (c.method === 'GET' && c.url.includes('/entities?type=RoadRestriction')) return new Response('down', { status: 503 });
+      if (c.method === 'GET' && c.url.endsWith('/v1/reviews?profile=road-restriction-check')) return Response.json({ reviews: [{ decision_id: 'r-old', created_at: old() }] });
+      const close = c.url.match(/\/v1\/reviews\/([^/]+)\/close$/);
+      if (c.method === 'POST' && close) {
+        closes.push(close[1]!);
+        return Response.json({ decision_id: close[1], status: 'superseded' });
+      }
+      return undefined;
+    };
+    await env.DEMO.put('issue:9', JSON.stringify({ decision: 'd-1', entity: 'e', action: 'review', corrections: [], createdAt: old() }));
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await cleanup(env)).toEqual({ deleted: 0, closed: 1, reviewsClosed: 1, failed: 1 });
+    expect(closes).toEqual(['r-old']);
+    expect(errors).toHaveBeenCalledWith(expect.stringContaining('cleanup: listing the reports'));
+  });
+
+  it('keeps the issue record when GitHub refuses the close, so the next hour tries again', async () => {
+    answer = (c) => {
+      if (c.method === 'GET' && c.url.includes('/entities?type=RoadRestriction')) return Response.json([]);
+      if (c.method === 'PATCH' && c.url.endsWith('/issues/9')) return new Response(null, { status: 502 });
+      return undefined;
+    };
+    await env.DEMO.put('issue:9', JSON.stringify({ decision: 'd-1', entity: 'e', action: 'review', corrections: [], createdAt: old() }));
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await cleanup(env)).toMatchObject({ closed: 0, failed: 1 });
+    expect(await env.DEMO.get('issue:9')).not.toBeNull();
+    expect(errors).toHaveBeenCalledWith(expect.stringContaining('cleanup: issue 9'));
+  });
+
+  it('counts a failed review list or close as failed, and goes on', async () => {
+    answer = (c) => {
+      if (c.method === 'GET' && c.url.includes('/entities?type=RoadRestriction')) return Response.json([]);
+      if (c.method === 'GET' && c.url.endsWith('/v1/reviews?profile=road-restriction-check')) return new Response('down', { status: 503 });
+      if (c.method === 'GET' && c.url.endsWith('/v1/reviews?profile=evacuation-access-check')) return Response.json({ reviews: [{ decision_id: 'e-old', created_at: old() }] });
+      if (c.method === 'POST' && c.url.endsWith('/v1/reviews/e-old/close')) return new Response('down', { status: 503 });
+      return undefined;
+    };
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await cleanup(env)).toEqual({ deleted: 0, closed: 0, reviewsClosed: 0, failed: 2 });
+    expect(errors).toHaveBeenCalledWith(expect.stringContaining('road-restriction-check'));
+    expect(errors).toHaveBeenCalledWith(expect.stringContaining('e-old'));
+  });
+});
+
 describe("the bridge's queue (pointsman#88)", () => {
   const report = { id: 'urn:ngsi-ld:RoadRestriction:demo-00000000-0000-4000-8000-000000000003', type: 'RoadRestriction', roadName: P('内堀通り'), restrictionStatus: P('closed'), description: P('倒木で通れない') };
   const decided = (action: string) => ({
@@ -847,6 +1028,50 @@ describe("the bridge's queue (pointsman#88)", () => {
     // Awaited in the consumer, not after it.
     expect(calls.find((c) => c.url.endsWith('/repos/geolonia/pointsman-demo-roads/issues'))?.body.labels).toEqual(['demo', 'urgent']);
     expect(await env.DEMO.get('issue:7', 'json')).toMatchObject({ decision: '44444444-4444-4444-8444-444444444444', action: 'urgent' });
+  });
+
+  it('opens the issue when KV does not show the report record yet, from the entity (#113)', async () => {
+    pointsmanSays('urgent');
+    const first = answer;
+    answer = (c) => (c.method === 'GET' && c.url.startsWith(`${BROKER}/entities/${encodeURIComponent(report.id)}`)
+      ? Response.json({ ...report, demoReport: P({ prepared: 'fallen-tree' }) })
+      : first(c));
+    const m = message({ path: '/notify', entity: report });
+    await consume(m);
+    expect(m.ack).toHaveBeenCalled();
+    expect(calls.find((c) => c.url.endsWith('/repos/geolonia/pointsman-demo-roads/issues'))?.body.labels).toEqual(['demo', 'urgent']);
+  });
+
+  it('reads demoReport also expanded with the default vocabulary (#113)', async () => {
+    pointsmanSays('urgent');
+    const first = answer;
+    answer = (c) => (c.method === 'GET' && c.url.startsWith(`${BROKER}/entities/${encodeURIComponent(report.id)}`)
+      ? Response.json({ ...report, 'https://uri.etsi.org/ngsi-ld/default-context/demoReport': P({ prepared: 'fallen-tree' }) })
+      : first(c));
+    await consume(message({ path: '/notify', entity: report }));
+    expect(calls.some((c) => c.url.endsWith('/repos/geolonia/pointsman-demo-roads/issues'))).toBe(true);
+  });
+
+  it('keeps the visitor limit from the entity when KV does not show the record (#113)', async () => {
+    pointsmanSays('urgent');
+    const first = answer;
+    answer = (c) => (c.method === 'GET' && c.url.startsWith(`${BROKER}/entities/${encodeURIComponent(report.id)}`)
+      ? Response.json({ ...report, demoReport: P({ prepared: 'fallen-tree', noIssue: 'visitor' }) })
+      : first(c));
+    const warnings = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await consume(message({ path: '/notify', entity: report }));
+    expect(calls.some((c) => c.url.startsWith('https://api.github.com/'))).toBe(false);
+    expect(warnings).toHaveBeenCalledWith(expect.stringContaining('the visitor reached'));
+  });
+
+  it('logs when neither the entity nor KV says whether the report is prepared (#113)', async () => {
+    pointsmanSays('urgent');
+    const warnings = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const m = message({ path: '/notify', entity: report });
+    await consume(m);
+    expect(m.ack).toHaveBeenCalled();
+    expect(calls.some((c) => c.url.startsWith('https://api.github.com/'))).toBe(false);
+    expect(warnings).toHaveBeenCalledWith(expect.stringMatching(/issue for 44444444-.*no record of the report/));
   });
 
   it('retries when Pointsman is down, with a growing delay', async () => {

@@ -61,4 +61,9 @@ export function checkEnv(env: Env): void {
   }
 }
 
-export const trimUrl = (u: string) => u.replace(/\/+$/, '');
+/** The URL without trailing slashes (a loop, not a regex: CodeQL flags /\/+$/ as polynomial). */
+export const trimUrl = (u: string) => {
+  let end = u.length;
+  while (end > 0 && u[end - 1] === '/') end -= 1;
+  return u.slice(0, end);
+};
