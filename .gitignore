@@ -5,3 +5,6 @@ engine-tmp-*
 worker-configuration.d.ts
 .dev.vars
 wrangler.deploy.json
+
+# Serena (local code-navigation tool config and memories)
+.serena/
