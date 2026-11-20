@@ -707,7 +707,9 @@ describe('cleanup', () => {
       if (c.method === 'DELETE') return new Response(null, { status: c.url.includes('Task') ? 503 : 204 });
       return undefined;
     };
-    expect(await cleanup(env)).toEqual({ deleted: 1, closed: 0, reviewsClosed: 0, failed: 0 });
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await cleanup(env)).toEqual({ deleted: 1, closed: 0, reviewsClosed: 0, failed: 1 });
+    expect(errors).toHaveBeenCalledWith(expect.stringContaining('cleanup: task '));
     expect(calls.some((c) => c.method === 'DELETE' && c.url.endsWith(encodeURIComponent('urn:ngsi-ld:RoadRestriction:demo-old')))).toBe(true);
   });
 });
@@ -902,6 +904,32 @@ describe('cleanup when something fails (#114) and old reviews (#115)', () => {
     // Step 2's review came hours after the report: the list says it is young.
     expect(await cleanup(env)).toEqual({ deleted: 1, closed: 0, reviewsClosed: 2, failed: 0 });
     expect(closes).toEqual(['d-a', 'e-a']);
+  });
+
+  it('tries a failed review close of a deleted report again the next hour', async () => {
+    let down = true;
+    const closes: string[] = [];
+    answer = (c) => {
+      if (c.method === 'GET' && c.url.includes('/entities?type=RoadRestriction')) {
+        return Response.json(down ? [{ id: 'urn:ngsi-ld:RoadRestriction:demo-a', type: 'RoadRestriction', createdAt: old(),
+          check: { type: 'Property', value: 'review', decision: { type: 'Relationship', object: 'urn:ngsi-ld:Decision:d-a' } } }] : []);
+      }
+      if (c.method === 'DELETE') return new Response(null, { status: 204 });
+      const close = c.url.match(/\/v1\/reviews\/([^/]+)\/close$/);
+      if (c.method === 'POST' && close) {
+        closes.push(close[1]!);
+        return down ? new Response('down', { status: 503 }) : Response.json({ decision_id: close[1], status: 'superseded' });
+      }
+      return undefined;
+    };
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    // The report is deleted; its review (younger than a day) could not be closed.
+    expect(await cleanup(env)).toMatchObject({ deleted: 1, reviewsClosed: 0 });
+    expect(await env.DEMO.get('review-close:d-a')).not.toBeNull();
+    down = false;
+    expect(await cleanup(env)).toEqual({ deleted: 0, closed: 0, reviewsClosed: 1, failed: 0 });
+    expect(closes.filter((d) => d === 'd-a').length).toBeGreaterThanOrEqual(2);
+    expect(await env.DEMO.get('review-close:d-a')).toBeNull();
   });
 
   it('still closes old issues and reviews when the broker cannot list the reports', async () => {

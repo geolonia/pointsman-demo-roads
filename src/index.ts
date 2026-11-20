@@ -1095,7 +1095,7 @@ export async function cleanup(env: Env, now = Date.now()): Promise<{ deleted: nu
       }
       // Extra data: a Task that cannot be deleted must not keep the report.
       const taskId = await taskIdOf(e);
-      if (taskId) await broker.delete(taskId).catch((err) => console.error(`task cleanup: ${(err as Error).message}`));
+      if (taskId) await broker.delete(taskId).catch((err) => fail(`task ${taskId}`, err));
       // The additional check: its Decision entity and the Alert it raised, and
       // the ones it replaced (it requires the first check, so a rerun replaces
       // the earlier one), through their replaces links.
@@ -1131,8 +1131,25 @@ export async function cleanup(env: Env, now = Date.now()): Promise<{ deleted: nu
         if (await closeReview(env, decision)) reviewsClosed += 1;
       } catch (err) {
         fail(`review ${decision}`, err);
+        // The report is gone, and the review may be younger than a day: kept
+        // here, so the next hour tries again.
+        await env.DEMO.put(`review-close:${decision}`, '1', { expirationTtl: KV_TTL }).catch(() => {});
       }
     }
+  }
+  // Closes that failed in an earlier run.
+  try {
+    for (const key of (await env.DEMO.list({ prefix: 'review-close:' })).keys) {
+      const decision = key.name.slice('review-close:'.length);
+      try {
+        if (await closeReview(env, decision)) reviewsClosed += 1;
+        await env.DEMO.delete(key.name);
+      } catch (err) {
+        fail(`review ${decision}`, err);
+      }
+    }
+  } catch (err) {
+    fail('listing the reviews to close again', err);
   }
   const github = new GitHub(env);
   let issueKeys: { name: string }[] = [];

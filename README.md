@@ -218,8 +218,8 @@ Same origin as the page; other origins must be listed in `ALLOWED_ORIGINS`.
   reviews of those reports still pending in Pointsman (closed as
   superseded, so the page's "still waiting" count matches its list; any
   pending review older than a day is closed too). What fails (a report, an
-  issue GitHub does not close, a review) is logged and tried again the next
-  hour; the rest goes on. Do not write personal data.
+  issue GitHub does not close, a review, kept in KV as `review-close:<id>`)
+  is logged and tried again the next hour; the rest goes on. Do not write personal data.
 - A prepared report's entity carries `demoReport` (`{"prepared": "<id>"}`,
   plus `"noIssue": "visitor"` past the visitor's issue limit), the demo's own
   attribute. The queue consumer reads it to know whether to open an issue:
