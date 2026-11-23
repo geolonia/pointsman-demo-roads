@@ -5,7 +5,7 @@
 // hosts (map tiles, MapLibre, fonts) are blocked, so the tests do not depend
 // on them: the page works without the map.
 
-import { expect, test, type Page } from '@playwright/test';
+import { test as base, expect, type Page } from '@playwright/test';
 
 const REPORT_ID = 'urn:ngsi-ld:RoadRestriction:demo-00000000-0000-4000-8000-000000000001';
 
@@ -102,12 +102,20 @@ function collectErrors(page: Page): string[] {
   return errors;
 }
 
+/** Every test fails on the errors above, whatever it does on the page. */
+const test = base.extend<{ pageErrors: string[] }>({
+  pageErrors: [async ({ page }, use) => {
+    const errors = collectErrors(page);
+    await use(errors);
+    expect(errors, 'errors on the page').toEqual([]);
+  }, { auto: true }],
+});
+
 test.beforeEach(async ({ page }) => {
   await stubServices(page);
 });
 
 test('the page loads with the prepared reports from the Worker', async ({ page }) => {
-  const errors = collectErrors(page);
   await page.goto('/');
   await expect(page).toHaveTitle('Pointsman FIWARE demo');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Heavy rain. Closed roads are reported.');
@@ -115,7 +123,6 @@ test('the page loads with the prepared reports from the Worker', async ({ page }
   await expect(page.locator('#featured button.card')).toHaveCount(4);
   await expect(page.locator('#more-summary')).toHaveText(/More examples \(\d+\)/);
   await expect(page.locator('#send-error')).toBeHidden();
-  expect(errors).toEqual([]);
 });
 
 test('the language switch shows the page in Japanese', async ({ page }) => {
@@ -153,7 +160,6 @@ test('the reports panel lists the recent reports', async ({ page }) => {
 });
 
 test('a prepared report goes through all four steps to its final result', async ({ page }) => {
-  const errors = collectErrors(page);
   await page.goto('/');
   const sent = page.waitForRequest((r) => r.url().endsWith('/api/reports') && r.method() === 'POST');
   await page.locator('#featured button.card').first().click();
@@ -173,8 +179,7 @@ test('a prepared report goes through all four steps to its final result', async 
 
   // Step 4: the final result, and the way back to step 1.
   await expect(page.locator('#step-result')).toBeVisible();
-  await expect(page.locator('#final')).not.toBeEmpty();
+  await expect(page.locator('#final .headline')).toHaveText('Published: residents see it now');
   await page.getByRole('button', { name: 'Try another report' }).click();
   await expect(page.locator('#step-pick')).toBeVisible();
-  expect(errors).toEqual([]);
 });
