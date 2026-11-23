@@ -5,3 +5,5 @@ engine-tmp-*
 worker-configuration.d.ts
 .dev.vars
 wrangler.deploy.json
+test-results/
+playwright-report/
