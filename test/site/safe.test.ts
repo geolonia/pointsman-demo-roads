@@ -5,6 +5,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import app from '../../site/app.js?raw';
 import html from '../../site/index.html?raw';
+import safeText from '../../site/safe.js?raw';
 
 type Safe = {
   el: (tag: string, props?: Record<string, unknown> | null, children?: (Node | string | null)[]) => HTMLElement;
@@ -111,7 +112,8 @@ describe('cleanSvg()', () => {
 describe('app.js', () => {
   it('writes HTML only in applyLang, from its own texts', () => {
     // The one innerHTML: data-i18n texts from T (they may contain links).
-    expect(app.match(/\.innerHTML\s*=/g)).toHaveLength(1);
+    // Also += and ['innerHTML'], not == (a comparison).
+    expect(app.match(/innerHTML['"\]]*\s*(\+|\|\||&&|\?\?)?=(?!=)/g)).toHaveLength(1);
     expect(app).toMatch(/var v = t\(n\.dataset\.i18n\); if \(typeof v === 'string'\) n\.innerHTML = v;/);
     expect(app).not.toMatch(/outerHTML\s*=|insertAdjacentHTML|document\.write|\beval\(|new Function\(/);
   });
@@ -120,6 +122,10 @@ describe('app.js', () => {
     expect(app).toContain('var el = window.PointsmanSafe.el;');
     expect(app).toContain('var cleanSvg = window.PointsmanSafe.cleanSvg;');
     expect(app).not.toMatch(/function (el|cleanSvg)\(/);
+  });
+
+  it('safe.js is a plain script: no import or export', () => {
+    expect(safeText).not.toMatch(/^\s*(import|export)\b/m);
   });
 
   it('is loaded after safe.js', () => {
