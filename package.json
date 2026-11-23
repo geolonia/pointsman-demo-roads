@@ -10,12 +10,14 @@
   "scripts": {
     "engine": "node scripts/fetch-engine.mjs",
     "dev": "wrangler dev",
-    "typecheck": "wrangler types && tsc -p tsconfig.json && tsc -p test/tsconfig.json && tsc -p test/site/tsconfig.json",
+    "typecheck": "wrangler types && tsc -p tsconfig.json && tsc -p test/tsconfig.json && tsc -p test/site/tsconfig.json && tsc -p e2e/tsconfig.json",
     "test": "vitest run",
+    "test:e2e": "playwright test",
     "check": "pnpm typecheck && pnpm test && wrangler deploy --dry-run --outdir .wrangler/dry-run"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.7.0",
+    "@playwright/test": "~1.65.1",
     "jsdom": "31.0.0",
     "jsonc-parser": "^3.3.1",
     "typescript": "^7.0.2",
