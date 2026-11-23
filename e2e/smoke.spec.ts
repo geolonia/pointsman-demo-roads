@@ -1,5 +1,6 @@
 // Smoke tests: the page loads on the real Worker, its main controls work,
-// and one prepared report goes through all four steps. Endpoints that need
+// and prepared reports go through all four steps: one published at once, one
+// a person publishes, and one urgent that a person rejects. Endpoints that need
 // the broker or Pointsman are stubbed here (playwright.config.ts says why);
 // GET /api/config and the page's files come from the Worker itself. Other
 // hosts (map tiles, MapLibre, fonts) are blocked, so the tests do not depend
@@ -30,7 +31,7 @@ function publishedReport(sentAt: number) {
         clarity: { value: 3 },
       },
     },
-    final: { action: 'publish', decidedAt: at(5), ngsi: { decision: null } },
+    final: { action: 'publish', decidedAt: at(5), policyRule: '3', ngsi: { decision: null } },
     published: true,
     prepared: true,
     visitorDecision: null,
@@ -40,6 +41,70 @@ function publishedReport(sentAt: number) {
     evacuation: null,
     ngsi: { entity: { id: REPORT_ID, type: 'RoadRestriction' }, decision: { id: 'urn:ngsi-ld:Decision:00000000-0000-4000-8000-000000000002' }, task: null },
   };
+}
+
+type Answer = 'publish' | 'reject';
+
+/**
+ * A report that waits for a person (the first check said review or urgent),
+ * after the additional check and the final result, in the shape of
+ * GET /api/reports/{id}. With an answer: as the bridge writes it back, with
+ * the person's answer on the check and the final result made again after it.
+ */
+function waitingReport(sentAt: number, first: { action: 'review' | 'urgent'; policyRule?: string; danger: number },
+  evacuation: { action: 'alert' | 'none'; policyRule?: string }, finalBefore: { action: string; policyRule?: string },
+  answer: { action: Answer; final: { action: string; policyRule: string } } | null) {
+  const at = (s: number) => new Date(sentAt + s * 1000).toISOString();
+  const r = publishedReport(sentAt);
+  return {
+    ...r,
+    check: {
+      ...r.check,
+      action: first.action,
+      ...(first.policyRule !== undefined && { policyRule: first.policyRule }),
+      answers: { ...r.check.answers, danger: { value: first.danger }, clarity: { value: first.action === 'review' ? 1 : 3 } },
+      ...(answer && { finalAction: answer.action, reviewedAt: at(10) }),
+    },
+    evacuation: {
+      action: evacuation.action,
+      decidedAt: at(6),
+      ...(evacuation.policyRule !== undefined && { policyRule: evacuation.policyRule }),
+      answers: {},
+      facts: [],
+      ngsi: { decision: null, alert: evacuation.action === 'alert' ? { id: 'urn:ngsi-ld:Alert:00000000-0000-4000-8000-000000000003', type: 'Alert' } : null },
+    },
+    final: answer
+      ? { action: answer.final.action, decidedAt: at(12), policyRule: answer.final.policyRule, ngsi: { decision: null } }
+      : { action: finalBefore.action, decidedAt: at(8), ...(finalBefore.policyRule !== undefined && { policyRule: finalBefore.policyRule }), ngsi: { decision: null } },
+    published: answer?.final.action === 'publish',
+    visitorDecision: answer?.action ?? null,
+  };
+}
+
+/**
+ * Serves a waiting report until the visitor answers (POST .../resolve, as
+ * the Worker answers it), then the report as it is after that answer.
+ * Returns what the page sent with its answer.
+ */
+async function stubPersonFlow(page: Page, before: () => unknown, after: (answer: Answer) => unknown) {
+  const sent: { action?: Answer; key?: string }[] = [];
+  await page.route(/\/api\/reports\/[^/]+\/resolve$/, (route) => {
+    // Only the report this test sent (the id is percent-encoded in the path).
+    expect(decodeURIComponent(new URL(route.request().url()).pathname)).toBe(`/api/reports/${REPORT_ID}/resolve`);
+    const body = route.request().postDataJSON() as { action: Answer; key: string };
+    sent.push(body);
+    return route.fulfill({ json: { finalAction: body.action } });
+  });
+  // Added after stubServices, so it comes first for GET /api/reports/{id}.
+  await page.route(/\/api\/reports\/[^/]+$/, (route) => route.fulfill({ json: sent[0]?.action ? after(sent[0].action) : before() }));
+  return sent;
+}
+
+/** Clicks a featured card by its prepared report's id, and checks that this id is what the page sends. */
+async function sendPrepared(page: Page, id: string) {
+  const sent = page.waitForRequest((r) => r.url().endsWith('/api/reports') && r.method() === 'POST');
+  await page.locator(`#featured button.card[aria-labelledby="card-${id}-title"]`).click();
+  expect((await sent).postDataJSON()).toEqual({ prepared: id, lang: 'en' });
 }
 
 const listed = {
@@ -159,12 +224,9 @@ test('the reports panel lists the recent reports', async ({ page }) => {
   await expect(panel).toBeHidden();
 });
 
-test('a prepared report goes through all four steps to its final result', async ({ page }) => {
+test('a clear report is published at once, without a person', async ({ page }) => {
   await page.goto('/');
-  const sent = page.waitForRequest((r) => r.url().endsWith('/api/reports') && r.method() === 'POST');
-  await page.locator('#featured button.card').first().click();
-  const body = (await sent).postDataJSON() as { prepared: string; lang: string };
-  expect(body).toEqual({ prepared: expect.any(String), lang: 'en' });
+  await sendPrepared(page, 'flooded-underpass');
 
   // Step 2: the first check, its parts one after the other, then the rule.
   await expect(page.locator('#step-decide')).toBeVisible();
@@ -177,9 +239,76 @@ test('a prepared report goes through all four steps to its final result', async 
   await expect(page.locator('#outcome')).toContainText('Publish at once');
   await page.locator('#chain').getByRole('button').click();
 
-  // Step 4: the final result, and the way back to step 1.
+  // Step 4: the final result, nothing for a person, and the way back to step 1.
   await expect(page.locator('#step-result')).toBeVisible();
   await expect(page.locator('#final .headline')).toHaveText('Published: residents see it now');
+  await expect(page.locator('#final .rule-text')).toHaveText('The first check published it at once: no person was needed.');
+  await expect(page.locator('#person')).toBeEmpty();
   await page.getByRole('button', { name: 'Try another report' }).click();
   await expect(page.locator('#step-pick')).toBeVisible();
+});
+
+test('an unclear report waits for a person, and the visitor publishes it', async ({ page }) => {
+  const sentAt = Date.now() - 5000;
+  const answers = await stubPersonFlow(page,
+    () => waitingReport(sentAt, { action: 'review', danger: 0.05 }, { action: 'none' }, { action: 'review' }, null),
+    (action) => waitingReport(sentAt, { action: 'review', danger: 0.05 }, { action: 'none' }, { action: 'review' }, { action, final: { action: 'publish', policyRule: '3' } }));
+  await page.goto('/');
+  await sendPrepared(page, 'vague');
+
+  // Step 2: no rule for publishing fits.
+  const rule = page.locator('#rule');
+  await expect(rule.locator('.badge')).toHaveText('review');
+  await expect(rule.locator('.rule-text')).toHaveText('No rule for publishing fits: a person checks it.');
+  await rule.getByRole('button').click();
+
+  // Step 3: the additional check ran and found no reason for an alert.
+  await expect(page.locator('#outcome')).toContainText('Waiting for a person');
+  await expect(page.locator('#chain .chain-result')).toHaveText('The rules found no reason for an alert.');
+  await page.locator('#chain').getByRole('button').click();
+
+  // Step 4: waiting for a person, and the visitor is that person.
+  await expect(page.locator('#final .headline')).toHaveText('Waiting for a person');
+  const duty = page.locator('#person');
+  await expect(duty).toContainText('You are the person on duty');
+  await duty.getByRole('button', { name: 'Publish it' }).click();
+  // The answer carries the key the Worker gave for this report.
+  await expect(duty).toContainText('Published. The residents’ map shows it now.');
+  // Until the final result is made again after the answer, the page says so instead of the old one.
+  await expect(page.locator('#final')).toContainText('The final result is being decided');
+  expect(answers).toEqual([{ action: 'publish', key: 'k'.repeat(32) }]);
+  // The next poll (after 4 s) brings the final result made again after the answer.
+  await expect(page.locator('#final .headline')).toHaveText('Published: residents see it now', { timeout: 10_000 });
+  await expect(page.locator('#final .rule-text')).toHaveText('The person who checked the first result published it.');
+});
+
+test('a report of someone in danger is urgent, alerts the site, and the visitor rejects it', async ({ page }) => {
+  const sentAt = Date.now() - 5000;
+  const answers = await stubPersonFlow(page,
+    () => waitingReport(sentAt, { action: 'urgent', policyRule: '0', danger: 0.9 }, { action: 'alert', policyRule: '0' }, { action: 'urgent', policyRule: '2' }, null),
+    (action) => waitingReport(sentAt, { action: 'urgent', policyRule: '0', danger: 0.9 }, { action: 'alert', policyRule: '0' }, { action: 'urgent', policyRule: '2' }, { action, final: { action: 'reject', policyRule: '0' } }));
+  await page.goto('/');
+  await sendPrepared(page, 'car-trapped');
+
+  // Step 2: someone may be in danger.
+  const rule = page.locator('#rule');
+  await expect(rule.locator('.badge')).toHaveText('urgent');
+  await expect(rule.locator('.rule-text')).toHaveText('If someone may be in danger, a person sees it first.');
+  await rule.getByRole('button').click();
+
+  // Step 3: urgent, and the staff of the evacuation site get an alert.
+  await expect(page.locator('#outcome')).toContainText('Urgent: a person sees it first');
+  await expect(page.locator('#chain .chain-result')).toHaveText('Alert sent to the staff of the evacuation site.');
+  await page.locator('#chain').getByRole('button').click();
+
+  // Step 4: urgent until a person answers; the visitor rejects it.
+  await expect(page.locator('#final .headline')).toHaveText('Urgent: people must be told');
+  await expect(page.locator('#final .rule-text')).toHaveText('The first check found it urgent, and no person has answered otherwise.');
+  const duty = page.locator('#person');
+  await duty.getByRole('button', { name: 'Reject it' }).click();
+  await expect(duty).toContainText('Rejected. Residents never see it.');
+  await expect(page.locator('#final')).toContainText('The final result is being decided');
+  expect(answers).toEqual([{ action: 'reject', key: 'k'.repeat(32) }]);
+  await expect(page.locator('#final .headline')).toHaveText('Rejected: residents never see it', { timeout: 10_000 });
+  await expect(page.locator('#final .rule-text')).toHaveText('A person rejected the report: it stays rejected.');
 });
