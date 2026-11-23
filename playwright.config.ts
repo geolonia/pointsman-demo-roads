@@ -23,6 +23,10 @@ const vars = {
   GITHUB_WEBHOOK_SECRET: randomUUID(),
   // Only checked for being set: the tests never call GitHub.
   GITHUB_APP_PRIVATE_KEY: 'unused',
+  // Empty: no free-text reports (Turnstile), as in CI, even when a
+  // .dev.vars has the real keys.
+  TURNSTILE_SECRET: '',
+  TURNSTILE_SITE_KEY: '',
 };
 
 const command = [
@@ -38,7 +42,8 @@ export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 1 : 0,
+  // No retries: a smoke test that passes only on a second try is a failure.
+  retries: 0,
   // In CI: failures as annotations on the pull request.
   reporter: process.env.CI ? [['list'], ['github']] : 'list',
   use: {

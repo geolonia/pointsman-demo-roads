@@ -78,14 +78,26 @@ async function stubServices(page: Page) {
   }));
 }
 
-/** Uncaught errors and console errors, without the blocked hosts' failed loads. */
+/**
+ * Uncaught errors, console errors, and failed loads from the page's own
+ * origin. Failed loads from the blocked hosts do not count: the console
+ * reports every failed load the same way, so those lines are left out there
+ * and the own origin's are caught from the responses instead.
+ */
 function collectErrors(page: Page): string[] {
+  const origin = new URL(test.info().project.use.baseURL!).origin;
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
   page.on('console', (m) => {
     if (m.type() !== 'error') return;
     if (/Failed to load resource|net::ERR_/.test(m.text())) return;
     errors.push(`console: ${m.text()}`);
+  });
+  page.on('response', (r) => {
+    if (new URL(r.url()).origin === origin && r.status() >= 400) errors.push(`${r.status()} ${r.request().method()} ${r.url()}`);
+  });
+  page.on('requestfailed', (r) => {
+    if (new URL(r.url()).origin === origin) errors.push(`failed: ${r.method()} ${r.url()} ${r.failure()?.errorText ?? ''}`);
   });
   return errors;
 }

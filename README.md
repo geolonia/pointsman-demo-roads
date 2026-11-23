@@ -329,8 +329,9 @@ pnpm test:e2e
 ```
 
 They start the Worker with `wrangler dev` on port 8788, with throwaway
-secrets and the broker and Pointsman addresses pointing at a closed local
-port, so they never reach the real services, even with a `.dev.vars`. The
+secrets, no Turnstile keys, and the broker and Pointsman addresses pointing
+at a closed local port, so they never reach the real services. These
+settings win over a local `.dev.vars`; its other values still apply. The
 endpoints that need those services are stubbed in the tests; the page's
 files, `site/_headers` and `GET /api/config` are the real ones. Other hosts
 (map tiles, MapLibre, fonts) are blocked, so the map is not tested.
