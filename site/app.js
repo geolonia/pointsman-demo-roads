@@ -101,9 +101,11 @@
         '0': 'A person rejected the report: it stays rejected.',
         '1': 'People on foot are cut off from their evacuation site (found by the check, or by the person who checked it): urgent.',
         '2': 'The first check found it urgent, and no person has answered otherwise.',
-        '3': 'The first check, or the person who checked it, published it.',
+        '3': 'The first check published it at once: no person was needed.',
         'default': 'A person has not checked the first result yet. When they do, the final result is decided again.',
       },
+      // Rule 3 when a person answered: they published it, not the first check.
+      rules3Person: { '3': 'The person who checked the first result published it.' },
       finalKicker: 'Final result', stage1: 'The first check said',
       finalMissing: 'No final result', missingSecond: 'The additional check did not come, so there is no final result.',
       missingFinal: 'The final decision did not come.',
@@ -113,13 +115,14 @@
       fin: {
         publish: ['Published: residents see it now', 'The report is on the residents’ map.'],
         urgent: ['Urgent: people must be told', 'Headquarters acts on it first.'],
-        reject: ['Rejected: residents never see it', 'A person decided the report is wrong.'],
+        reject: ['Rejected: residents never see it', 'A person decided that residents should not see it.'],
         review: ['Waiting for a person', 'Residents see it only after someone checks the first result.'],
       },
       basedOn: 'Made from', bFirst: 'first result', bPerson: 'person’s answer', bSecond: 'additional check', bNoSecond: 'no additional check needed',
       showDecision3: 'Decision entity of the final result',
       graphKicker: 'How the city decides', graphText: 'A report goes from left to right. Each box is a profile with its own rules. A report published by the first check goes straight to the final result.',
       graphDmn: 'Download for DMN tools (.dmn)',
+      graphNames: { check: 'first check', evacuation: 'walk to site' },
       // evacuation-access-check (pointsman-config): its rules, by index.
       rules2: {
         '0': 'An evacuation site within 1 km, people on foot cannot pass, and the way around is at least 200 m longer: the site’s staff get an alert.',
@@ -128,7 +131,7 @@
       ruleUnknown: function (n) { return 'Rule ' + n + ' of the profile (this page does not describe it yet).'; },
       act: { publish: 'publish', review: 'review', urgent: 'urgent', reject: 'rejected', pending: 'being checked', alert: 'alert', none: 'no alert' },
       resultTitle: 'Final result',
-      oPublish: 'Published: residents see it now', ePublish: 'No person was needed. The report is on the residents’ map, seconds after it was sent.',
+      oPublish: 'Publish: no person needed', ePublish: 'No person was needed. The report is on the residents’ map, seconds after it was sent.',
       oReview: 'Waiting for a person', eReview: 'Headquarters sees it. Residents don’t, until someone checks it.',
       oUrgent: 'Urgent: a person sees it first', eUrgent: 'It is at the top of the list at headquarters. Residents see it once a person has checked it.',
       oFinalPublish: 'Published after a check', eFinalPublish: 'A person checked it. Residents see it now.',
@@ -170,7 +173,7 @@
       why2: 'Facts come from public data, so anyone can check them.',
       why3: 'The city writes the rules, and can read every decision later.',
       why4: 'A person has the last word whenever it matters.',
-      whyMore: 'More questions, with short answers: <a href="https://geolonia.github.io/pointsman/#faq">FAQ on the Pointsman website</a>.',
+      whyMore: 'More questions, with short answers: <a href="https://pointsman.net/#faq">FAQ on the Pointsman website</a>.',
       again: 'Try another report',
       statsTitle: 'The last 7 days',
       stats1: function (n, pub, person, urgent) {
@@ -188,50 +191,51 @@
       lgPublish: 'published', lgReview: 'waiting for a person', lgUrgent: 'urgent', lgReject: 'rejected', lgPending: 'being checked',
       floodLayer: 'river flood zone (maximum assumed rainfall)',
       ago: function (s) { return s < 60 ? s + ' s ago' : Math.round(s / 60) + ' min ago'; },
+      sec: ' s',
       aSteps: 'Steps', aWhose: 'Whose map', aMap: 'Map of the reports', aTheme: 'Switch theme',
       footer: 'Invented events at real places. Do not enter personal data. Map: <a href="https://maps.gsi.go.jp/development/ichiran.html">地理院タイル</a>.',
     },
     ja: {
       demo: '道路デモ', title: '大雨。通行止めの報告が次々に届く。',
-      lead: '報告を 1 件送ってみてください。その報告をどうするかを、Pointsman が数秒で決めます。報告を読み、場所を公開の地図で調べ、市の規則を当てはめます。',
-      st1: '報告を選ぶ', st2: '最初の確認', st3: '追加の確認', st4: '最終結果',
+      lead: '報告を 1 件送ってみてください。その報告をどうするかを、Pointsman が数秒で決めます。報告を読み、場所を公開の地図で調べ、市のルールを当てはめます。',
+      st1: '報告を選ぶ', st2: '最初の判定', st3: '追加の判定', st4: '最終結果',
       howTitle: '仕組み', close: '閉じる',
       resize: 'ドラッグでパネルの幅を変えられます（矢印キーでも変えられます）',
-      activityTitle: '報告の一覧', activityLead: 'デモが判定したもの：この 1 日の報告すべて、人の確認待ちの報告、そして直近 7 日間の数字です。',
-      howLead: '通行止めの報告が届いてから結果が出るまでを、順番に説明します。報告のデータは FIWARE のデータ基盤 GeonicDB にあり、次の段階に進むきっかけも GeonicDB が出します。Pointsman は、つなぎ役から聞かれたことに答えます。AI が受け持つのは決まった質問への回答までで、判定は公開の地図データと市の規則で行います。',
+      activityTitle: '報告の一覧', activityLead: 'デモが判定したもの：この 1 日の報告すべて、レビュー待ちの報告、そして直近 7 日間の数字です。',
+      howLead: '通行止めの報告が届いてから結果が出るまでを、順番に説明します。報告のデータは FIWARE のデータ基盤 GeonicDB にあり、次の段階に進むきっかけも GeonicDB が出します。Pointsman は、つなぎ役から聞かれたことに答えます。AI が受け持つのは決まった質問への回答までで、判定は公開の地図データと市のルールで行います。',
       h1k: '1・保存', h1t: '市のアプリが GeonicDB に保存する', h1d: '報告はほかのデータと同じように保存されます。Pointsman を使うために、アプリを作り変える必要はありません。',
-      h2k: '2・通知', h2t: 'GeonicDB がつなぎ役に知らせる', h2d: '報告を購読（サブスクリプション）しておくと、新しく保存されたときや変更されたときに通知が届きます。',
-      h3k: '3・最初の確認', h3t: 'Pointsman が判定する', h3d: 'つなぎ役が Pointsman に問い合わせます。AI は報告の文章を読んで、決まった質問に答えます。場所については、公開の地図データで事実を確かめます。そのうえで市の規則が、公開するか、人が確認するか、緊急かを決めます。',
+      h2k: '2・通知', h2t: 'GeonicDB がつなぎ役に知らせる', h2d: 'つなぎ役が報告を購読（サブスクリプション）しておくと、新しく保存されたときや変更されたときに通知が届きます。',
+      h3k: '3・最初の判定', h3t: 'Pointsman が判定する', h3d: 'つなぎ役が Pointsman に問い合わせます。AI は報告の文章を読んで、決まった質問に答えます。場所については、公開の地図データで調べます。そのうえで市のルールが、公開するか、人が確認するか、緊急かを決めます。',
       h4k: '4・書き戻し', h4t: '結果を GeonicDB に書き戻す', h4d: 'つなぎ役が結果を報告に書き込みます。人の確認が要る報告には、タスクも作ります。',
-      h5k: '5・次の段階', h5t: '結果が次の確認を始める', h5d: '公開と判定された報告は、そのまま最終結果になります。緊急の報告や人の確認が要る報告では、書き込まれた結果をきっかけに、まず追加の確認が始まります。歩いて避難場所まで行けるかを調べる確認です。そのあと、両方の結果から最終結果を決めます。',
-      h6k: '6・利用', h6t: 'どのアプリからも使える', h6d: '公開された報告は、住民向けの地図に表示されます。確認待ちの報告には担当者が答え（このデモでは報告を送った人が担当者です）、その答えをもとに最終結果を決め直します。',
-      forDevs: '開発者向け', lProfile: '質問と規則（プロファイル）', lBridge: 'つなぎ役（FIWARE ブリッジ）', lStory: 'この仕組みの理由', lSource: 'このデモのソース', lQueue: '確認待ちの一覧',
+      h5k: '5・次の段階', h5t: '結果が次の判定を始める', h5d: '公開と判定された報告は、そのまま最終結果になります。緊急の報告や人の確認が要る報告では、書き込まれた結果をきっかけに、まず追加の判定が始まります。歩いて避難場所まで行けるかを調べる判定です。そのあと、両方の結果から最終結果を決めます。',
+      h6k: '6・利用', h6t: 'どのアプリからも使える', h6d: '公開された報告は、住民向けの地図に表示されます。レビュー待ちの報告には担当者が回答し（このデモでは報告を送った人が担当者です）、その回答をもとに最終結果を決め直します。',
+      forDevs: '開発者向け', lProfile: '質問とルール（プロファイル）', lBridge: 'つなぎ役（FIWARE ブリッジ）', lStory: 'この仕組みの理由', lSource: 'このデモのソース', lQueue: 'レビュー待ちの一覧',
       listsLabel: '報告の一覧', recent: '最近の報告', recentNote: '全員が同じ報告を見ています。デモのデータは 1 日で消えます。',
-      waitingTitle: '人の確認待ち',
+      waitingTitle: 'レビュー待ち',
       waitingNote: 'データ基盤での検索 1 回で見つけています。<code>reviewStatus</code> が "pending" の <code>Decision</code> エンティティを探します。ほかの FIWARE アプリも同じ検索ができます。',
-      waitingNone: '今は確認待ちはありません。', showQuery: 'クエリ', more: function (n) { return 'ほか ' + n + ' 件'; },
+      waitingNone: '今はレビュー待ちはありません。', showQuery: 'クエリ', more: function (n) { return 'ほか ' + n + ' 件'; },
       waitingFailed: '一覧を読み込めませんでした。', waitingStale: '一覧を更新できませんでした。古い可能性があります。',
       pickTitle: '報告を選ぶ', pickNote: 'どれもその場で Pointsman に送られます。4 つとも結果が違います。',
       moreTitle: 'ほかの例', pickFoot: '場所は東京に実在しますが、出来事は架空です。全員が同じ報告を見ています。報告は 1 日で消えます。',
       usage: function (u, l) { return '（本日 ' + u + ' / ' + l + ' 件）'; },
       limit: '本日のデモの上限に達しました。また明日お試しください。', failed: '報告を送れませんでした：',
-      decideTitle: '最初の確認', yourReport: 'あなたの報告', aReport: '報告', noRoad: '（道路名なし）',
+      decideTitle: '最初の判定', yourReport: 'あなたの報告', aReport: '報告', noRoad: '（道路名なし）',
       s1: '市のデータ基盤に保存', s1d: '市のアプリが保存するのと同じ方法です。',
-      s2: 'AI が 4 つの質問に、確率つきで答えた', s2d: 'AI は本文を読むだけで、決めはしません。',
+      s2: 'AI が 4 つの質問に、確率つきで回答した', s2d: 'AI は本文を読むだけで、決めはしません。',
       chanceYes: function (n) { return '「はい」の確率 ' + n + ' %'; }, chanceDanger: function (n) { return '危険の確率 ' + n + ' %'; },
-      s3: 'Pointsman が地図で場所を調べた', s3d: '浸水想定区域と最寄りの避難場所を、公開の地図データから調べます。通行止め区間では、車で迂回する道のりも調べます（人に回る報告では、歩いて迂回する道のりも）。',
-      s4: '市の規則が決めた', s4d: '答えと事実から、行動を 1 つ決めます。',
+      s3: 'Pointsman が地図で場所を調べた', s3d: '浸水想定区域と最寄りの避難場所を、公開の地図データから調べます。通行止め区間では、車で迂回する道のりも調べます（人が確認する報告では、歩いて迂回する道のりも）。',
+      s4: '市のルールが決めた', s4d: 'AI の回答と地図で調べた値から、アクションを 1 つ決めます。',
       working: '処理中…', together: 'Pointsman に渡され、この 2 つは同時に進みます', inAll: function (s) { return '合計 ' + s; },
-      useTag: '規則', srcShow: 'データの出典', usesMarked: '規則は、上でこの印のついた答えと地図での確認を読みました。',
+      useTag: 'ルール', srcShow: 'データの出典', usesMarked: 'ルールは、上でこの印のついた回答と地図での確認を読みました。',
       lvl: { deep: '深い（3 m 以上）', shallow: '3 m 未満', noZone: '浸水想定区域の外', near: '1 km 以内', far: '1 km より遠い', long: '200 m 以上', short: '200 m 未満', noWay: '迂回路なし', ctx: '参考' },
-      answersTitle: 'AI の答え', factsTitle: '公開の地図データから・AI はこれを見ません',
-      ruleTitle: '市の規則', next: '追加の確認 →', next2: '最終結果 →',
-      checkTitle: '追加の確認', secondNotNeeded: '不要です：報告はすぐに公開されました。この確認は、人に回る報告にだけ行います。',
-      secondRunning: '追加の確認をしています…', cNone: '規則では、警報を出す理由はありませんでした。',
+      answersTitle: 'AI の回答', factsTitle: '公開の地図データから・AI はこれを見ません',
+      ruleTitle: '市のルール', next: '追加の判定 →', next2: '最終結果 →',
+      checkTitle: '追加の判定', secondNotNeeded: '不要です：報告はすぐに公開されました。この判定は、人が確認する報告にだけ行います。',
+      secondRunning: '追加の判定をしています…', cNone: 'ルールでは、担当者に知らせる理由はありませんでした。',
       fNotForPoint: '確認しません：報告は区間ではなく地点なので、迂回路は計算できません。',
       showRequest: 'リクエスト', showEntity: 'RoadRestriction エンティティ（NGSI-LD）', showDecision: 'Decision エンティティ（NGSI-LD、完全な IRI）', showTask: '担当者向けの Task エンティティ（datamodels.jp）',
-      showDecision2: '2 つ目の確認の Decision エンティティ', showAlert: 'Alert エンティティ（Smart Data Models）',
-      showAnswers: '答え', showFacts: '地図での確認',
+      showDecision2: '追加の判定の Decision エンティティ', showAlert: 'Alert エンティティ（Smart Data Models）',
+      showAnswers: '回答', showFacts: '地図での確認',
       devTitle: '開発者向け表示', devShort: '開発',
       devLead: '報告がどこを通るかを、実際のデータとともに順に示します。ページの手順を指すと、対応する部分がここで強調されます。',
       devEmpty: '報告を送ると、通る部分がここに順に表示されます。',
@@ -243,19 +247,19 @@
         save: ['POST /api/reports', 'デモのサーバーが報告を RoadRestriction エンティティ（NGSI-LD）としてデータ基盤に保存します。市のアプリと同じ方法です。'],
         notify: ['通知：新しい報告', 'RoadRestriction エンティティのサブスクリプションがデモのサーバーに知らせます（NGSI-LD の通知）。サーバーはキューに入れ、つなぎ役がキューから処理します。'],
         decide: ['POST /v1/decide/road-restriction-check', 'つなぎ役がエンティティの属性を状態として Pointsman に送ります。'],
-        model: ['モデルが 4 つの質問に答える', 'モデルは報告の文字の項目（場所ではなく）を読み、型の決まった答えを確率とともに返します。'],
-        maps: ['地図での確認：浸水想定区域、避難場所', 'Pointsman が場所を国土地理院の公開データで調べます。モデルはこの事実を見ません。'],
-        decision: ['判定：{action}（policy.{rule}）', 'プロファイルの規則が、答えと地図での確認から行動を 1 つ決めます。'],
+        model: ['モデルが 4 つの質問に答える', 'モデルは報告の文字の項目（場所ではなく）を読み、型の決まった回答を確率とともに返します。'],
+        maps: ['地図での確認：浸水想定区域、避難場所', 'Pointsman が場所を国土地理院の公開データで調べます。モデルはこの値を見ません。'],
+        decision: ['判定：{action}（policy.{rule}）', 'プロファイルのルールが、回答と地図での確認からアクションを 1 つ決めます。'],
         write: ['Decision（と Task）を作成、check を PATCH', 'つなぎ役が結果を書き戻します。Decision エンティティ、人が必要なときは Task、最後に Decision につながる報告の check 属性です。'],
-        publishEnd: ['2 つ目の確認はなし', '2 つ目のサブスクリプションは、人に回る報告（緊急・確認）にだけ合います。'],
-        secondLate: ['2 つ目の確認が届かない', '1 分以内に結果がありません。キューが再試行しているか、確認が失敗しました。1 つ目の結果はそのままです。'],
-        notify2: ['通知：check が緊急または確認', 'check 属性の 2 つ目のサブスクリプションが、2 つ目の確認を始めます。'],
-        decide2: ['POST /v1/decide/evacuation-access-check', '同じつなぎ役、別のプロファイルです。最初の確認の ID を送り、Pointsman がそれを確かめます。その Decision は最初の確認につながります（prov:wasInformedBy）。'],
+        publishEnd: ['追加の判定はなし', '2 つ目のサブスクリプションは、人に回す報告（緊急・要確認）にだけ合います。'],
+        secondLate: ['追加の判定が届かない', '1 分以内に結果がありません。キューが再試行しているか、判定が失敗しました。最初の結果はそのままです。'],
+        notify2: ['通知：check が緊急または要確認', 'check 属性の 2 つ目のサブスクリプションが、追加の判定を始めます。'],
+        decide2: ['POST /v1/decide/evacuation-access-check', '同じつなぎ役、別のプロファイルです。最初の判定の ID を送り、Pointsman がそれを確かめます。その Decision は最初の判定につながります（prov:wasInformedBy）。'],
         maps2: ['地図での確認：避難場所、歩いて迂回', '国土地理院の避難場所と、OpenStreetMap 上の Valhalla 経路（区間を閉じた場合と閉じない場合）。'],
-        write2: ['Decision を作成、evacuation を PATCH（と Alert）', 'つなぎ役が 2 つ目の結果を書き戻します。警報のときは、デモのサーバーが避難場所の担当者向けの Alert エンティティ（Smart Data Models）を作ります。'],
-        notify3: ['通知：前の結果がそろった', 'check と evacuation の 3 つ目のサブスクリプションが、必要な前の確認がそろったところで最終の判定を始めます。'],
-        decide3: ['POST /v1/decide/road-closure-final', 'つなぎ役は報告と前の判定の ID を送ります。Pointsman が自分の記録から結果を読むので、結果を偽ることはできません。規則だけで決め、モデルは呼びません。'],
-        write3: ['Decision を作成、final を PATCH', 'つなぎ役が最終結果を書き戻します。その Decision は前の 2 つにつながり（prov:wasInformedBy）、人の答えの後に置き換えた判定にもつながります（dcterms:replaces）。住民向けの地図はこの結果を読みます。'],
+        write2: ['Decision を作成、evacuation を PATCH（と Alert）', 'つなぎ役が追加の判定の結果を書き戻します。担当者に知らせるときは、デモのサーバーが避難場所の担当者向けの Alert エンティティ（Smart Data Models）を作ります。'],
+        notify3: ['通知：前の結果がそろった', 'check と evacuation の 3 つ目のサブスクリプションが、必要な前の判定がそろったところで最終の判定を始めます。'],
+        decide3: ['POST /v1/decide/road-closure-final', 'つなぎ役は報告と前の判定の ID を送ります。Pointsman が自分の判定ログから結果を読むので、結果を偽ることはできません。ルールだけで決め、モデルは呼びません。'],
+        write3: ['Decision を作成、final を PATCH', 'つなぎ役が最終結果を書き戻します。その Decision は前の 2 つにつながり（prov:wasInformedBy）、人の回答の後に置き換えた判定にもつながります（dcterms:replaces）。住民向けの地図はこの結果を読みます。'],
         finalLate: ['最終結果が届かない', '1 分以内に最終結果がありません。キューが再試行しているか、処理が失敗しました。前の結果はそのままです。'],
       },
       q: { category: 'なぜ通れないのか', status_matches: '状態と本文は合っているか', danger: '人に危険があるか', clarity: '報告はどのくらいはっきりしているか', foot_passable: '歩いて通れるか' },
@@ -266,53 +270,55 @@
       },
       clarity: ['何がどこで起きたか不明', '場所か原因が不明', '少し足りないが分かる', '何が・どこで・いつからが明確'],
       yes: 'はい', no: 'いいえ',
-      conf: { vsure: 'とても自信がある', sure: '自信がある', fair: 'やや自信がある', unsure: '自信がない' },
+      conf: { vsure: 'とても確信がある', sure: '確信がある', fair: 'やや確信がある', unsure: '確信がない' },
       rules: {
-        '0': '人に危険がありそうなら、真っ先に人が確認する。',
-        '1': '深い浸水想定区域（3 m 以上）で危険がありそうな報告は、真っ先に人が確認する。',
-        '2': '浸水想定区域を調べられず、危険がありそうなら、人が確認する。',
-        '3': '深い浸水想定区域（3 m 以上）では、公開の前に人が確認する。',
-        '4': '浸水想定区域を調べられなかったので、公開の前に人が確認する。',
-        '5': 'はっきりしていて矛盾がなく、危険のない報告は、すぐに公開する。',
-        'default': '公開の規則に当てはまらないので、人が確認する。',
+        '0': '人に危険がありそうなら、真っ先に人が確認します。',
+        '1': '深い浸水想定区域（3 m 以上）で危険がありそうな報告は、真っ先に人が確認します。',
+        '2': '浸水想定区域を調べられず、危険がありそうなら、人が確認します。',
+        '3': '深い浸水想定区域（3 m 以上）では、公開の前に人が確認します。',
+        '4': '浸水想定区域を調べられなかったので、公開の前に人が確認します。',
+        '5': 'はっきりしていて矛盾がなく、危険のない報告は、すぐに公開します。',
+        'default': 'すぐに公開する条件に当てはまらないので、人が確認します。',
       },
       rules3: {
-        '0': '人が報告を非公開にした：非公開のまま。',
-        '1': '歩いて避難場所まで行けない人がいる（確認の結果、または確認した人の答え）：緊急。',
-        '2': '1 つ目の確認で緊急となり、人はそれと違う答えをしていない。',
-        '3': '1 つ目の確認、またはそれを確認した人が公開とした。',
-        'default': '1 つ目の結果を、まだ人が確認していない。確認すると、最終結果をもう一度決める。',
+        '0': '人が報告を非公開にしたので、非公開のままです。',
+        '1': '歩いて避難場所まで行けない人がいるので（追加の判定の結果、または確認した人の回答）、緊急です。',
+        '2': '最初の判定で緊急となり、人はそれと違う回答をしていません。',
+        '3': '最初の判定ですぐに公開しました。人の確認は不要でした。',
+        'default': '最初の結果を、まだ人が確認していません。確認すると、最終結果をもう一度決めます。',
       },
-      finalKicker: '最終結果', stage1: '最初の確認の結果',
-      finalMissing: '最終結果はありません', missingSecond: '追加の確認が届かなかったため、最終結果はありません。',
+      rules3Person: { '3': '最初の結果を確認した人が公開しました。' },
+      finalKicker: '最終結果', stage1: '最初の判定の結果',
+      finalMissing: '最終結果はありません', missingSecond: '追加の判定が届かなかったため、最終結果はありません。',
       missingFinal: '最終結果が 1 分以内に届きませんでした。',
       standsFirst: function (a) { return '最初の結果のままです：' + a + '。'; },
-      standsPerson: function (a) { return '人の答えのままです：' + a + '。'; },
-      finalPending: '最終結果を決めています…', finalPendingText: 'Pointsman が最初の結果と追加の確認を 1 つの結果にまとめます。',
+      standsPerson: function (a) { return '人の回答のままです：' + a + '。'; },
+      finalPending: '最終結果を決めています…', finalPendingText: 'Pointsman が最初の結果と追加の判定を 1 つの結果にまとめます。',
       fin: {
         publish: ['公開：住民がすぐに見られます', '住民向けの地図に載りました。'],
         urgent: ['緊急：人に知らせる必要があります', '災害対策本部が真っ先に対応します。'],
-        reject: ['非公開：住民には見えません', '人が、報告は正しくないと判断しました。'],
-        review: ['人の確認待ち', '誰かが最初の結果を確認するまで、住民には見えません。'],
+        reject: ['非公開：住民には見えません', '人が、住民には見せないと決めました。'],
+        review: ['レビュー待ち', '誰かが最初の結果を確認するまで、住民には見えません。'],
       },
-      basedOn: 'もとにしたもの', bFirst: '最初の結果', bPerson: '人の答え', bSecond: '追加の確認', bNoSecond: '追加の確認は不要',
+      basedOn: 'もとにしたもの', bFirst: '最初の結果', bPerson: '人の回答', bSecond: '追加の判定', bNoSecond: '追加の判定は不要',
       showDecision3: '最終結果の Decision エンティティ',
-      graphKicker: '市の判定の流れ', graphText: '報告は左から右へ進みます。箱 1 つが、それぞれの規則をもつ 1 つのプロファイルです。最初の確認で公開された報告は、そのまま最終結果に進みます。',
+      graphKicker: '市の判定の流れ', graphText: '報告は左から右へ進みます。箱 1 つが、それぞれのルールをもつ 1 つのプロファイルです。最初の判定で公開された報告は、そのまま最終結果に進みます。',
       graphDmn: 'DMN ツール用にダウンロード（.dmn）',
+      graphNames: { check: '最初の判定', evacuation: '避難の判定' },
       rules2: {
-        '0': '1 km 以内に避難場所があり、歩いて通れず、迂回すると 200 m 以上長くなる：避難場所の担当者に警報を送る。',
-        '1': '避難場所の近くだが、迂回路を求められなかった：人が確認する。',
+        '0': '1 km 以内に避難場所があり、歩いて通れず、迂回すると 200 m 以上長くなるので、避難場所の担当者に知らせます。',
+        '1': '避難場所の近くですが、迂回路を求められなかったので、人が確認します。',
       },
-      ruleUnknown: function (n) { return 'プロファイルの規則 ' + n + '（このページではまだ説明していません）。'; },
-      act: { publish: '公開', review: '確認', urgent: '緊急', reject: '非公開', pending: '判定中', alert: '警報', none: '警報なし' },
+      ruleUnknown: function (n) { return 'プロファイルのルール ' + n + '（このページではまだ説明していません）。'; },
+      act: { publish: '公開', review: '要確認', urgent: '緊急', reject: '非公開', pending: '判定中', alert: '担当者に知らせる', none: '知らせなし' },
       resultTitle: '最終結果',
-      oPublish: '公開：住民がすぐに見られます', ePublish: '人の確認は不要でした。送ってから数秒で、住民向けの地図に載りました。',
-      oReview: '人の確認待ち', eReview: '災害対策本部では見えます。住民には、誰かが確認するまで見えません。',
+      oPublish: '公開：人の確認は不要', ePublish: '人の確認は不要でした。送ってから数秒で、住民向けの地図に載りました。',
+      oReview: 'レビュー待ち', eReview: '災害対策本部では見えます。住民には、誰かが確認するまで見えません。',
       oUrgent: '緊急：真っ先に人が確認します', eUrgent: '災害対策本部の一覧のいちばん上に出ます。住民には、人が確認してから見えます。',
       oFinalPublish: '確認のうえ公開', eFinalPublish: '人が確認しました。住民が見られます。',
       oFinalReject: '確認のうえ非公開', eFinalReject: '人が確認しました。住民には見えません。',
-      chainKicker: '最初の確認から始まる確認', chainTitle: '歩いて避難場所まで行けるか',
-      cAlert: '避難場所の担当者に警報を送りました。', cReview: '迂回路を確認できなかったので、人が確認します。',
+      chainKicker: '最初の判定がきっかけで始まる判定', chainTitle: '歩いて避難場所まで行けるか',
+      cAlert: '避難場所の担当者に知らせました。', cReview: '迂回路を確認できなかったので、人が確認します。',
       fQ: { flood: '洪水浸水想定区域の中か', shelter: '最寄りの指定緊急避難場所（洪水）はどこか', drive: 'ここを通る車は、迂回するとどれだけ長くなるか', walk: 'ここを通って歩く人は、迂回するとどれだけ長くなるか' },
       fFlood: function (c) { return 'はい：想定される深さ ' + c; },
       fNoFlood: 'いいえ（公開されている区域の外）',
@@ -332,44 +338,45 @@
       fRouteMap: function (m) { return '歩いて迂回：+' + m + ' m'; },
       fCarMap: function (m) { return '車で迂回：+' + m + ' m'; },
       fDrive: function (m) { return '車で ' + m + ' m 長くなる'; },
-      fDriveNote: '確認する人のための参考情報です。まだどの規則も使いません。', fNoDrive: '車では迂回できない',
-      fShelterNote: '確認する人のための参考情報です。追加の確認で使います。',
-      fSecond: '2 つ目の確認',
+      fDriveNote: '確認する人のための参考情報です。まだどのルールも使いません。', fNoDrive: '車では迂回できない',
+      fShelterNote: '確認する人のための参考情報です。追加の判定で使います。',
+      fSecond: '追加の判定',
       dutyTitle: 'あなたが担当者です',
       dutyText: '市では、チームのメンバーがこれを仕事として受け取ります。ここではあなたが決めてください。この報告を住民に見せますか。',
       doPublish: '公開する', doReject: '公開しない', deciding: '送信中…',
       didPublish: '公開しました。住民向けの地図に載っています。', didReject: '公開しませんでした。住民には見えません。',
-      learn: 'Pointsman はあなたの答えを記録します。AI がどのくらい正しかったか、市の規則のどこを直すべきかが、だんだん分かります。',
-      decideFailed: '答えを送れませんでした：',
+      learn: 'Pointsman はあなたの回答を記録します。AI がどのくらい正しかったか、市のルールのどこを直すべきかが、だんだん分かります。',
+      decideFailed: '回答を送れませんでした：',
       otherTitle: '人が決めます',
-      otherText: 'チームのメンバーが確認待ちの一覧で確認します。',
-      otherNoIssue: '確認待ちの一覧に回るのは、このページから送った報告だけです。',
-      otherOpening: '確認待ちの一覧に追加しています…',
-      otherLimit: 'デモが 1 日に作る GitHub の issue の数には上限があり、この報告は上限を超えました。issue なしで確認待ちの一覧に残ります。',
-      openIssue: '確認待ちの一覧で開く',
+      otherText: 'チームのメンバーがレビュー待ちの一覧で確認します。',
+      otherNoIssue: 'レビュー待ちの一覧に回るのは、このページから送った報告だけです。',
+      otherOpening: 'レビュー待ちの一覧に追加しています…',
+      otherLimit: 'デモが 1 日に作る GitHub の issue の数には上限があり、この報告は上限を超えました。issue なしでレビュー待ちの一覧に残ります。',
+      openIssue: 'レビュー待ちの一覧で開く',
       whyTitle: '市がこの仕組みを使う理由',
       why1: 'AI は決まった質問に答えるだけで、ひとりでは決めません。',
-      why2: '事実は公開データから調べるので、誰でも確かめられます。',
-      why3: '規則は市が書き、どの判定も後から読めます。',
+      why2: '地図で調べる値は公開データから取るので、誰でも確かめられます。',
+      why3: 'ルールは市が書き、どの判定も後から読めます。',
       why4: '大事なところでは、最後に人が決めます。',
-      whyMore: 'ほかの質問と答えは、Pointsman のサイトの<a href="https://geolonia.github.io/pointsman/ja/#faq">よくある質問</a>にまとめています。',
+      whyMore: 'ほかの質問と答えは、Pointsman のサイトの<a href="https://pointsman.net/ja/#faq">よくある質問</a>にまとめています。',
       again: 'ほかの報告を試す',
       statsTitle: 'この 7 日間の数字',
       stats1: function (n, pub, person, urgent) {
-        return '報告は ' + n + ' 件です。' + pub + ' 件はすぐに公開され、' + person + ' 件は人の確認に回りました' + (urgent ? '（うち緊急 ' + urgent + ' 件）。' : '。');
+        return '報告は ' + n + ' 件です。' + pub + ' 件はすぐに公開され、' + person + ' 件は人に回されました' + (urgent ? '（うち緊急 ' + urgent + ' 件）。' : '。');
       },
-      stats2: function (u, p, r, w) { return '人に回った報告 ' + u + ' 件のうち、人が公開したのは ' + p + ' 件、公開しなかったのは ' + r + ' 件です。' + w + ' 件はまだ確認待ちです。'; },
-      statsCorrected: function (c) { return '人が AI の答えを 1 つ以上直した報告は ' + c + ' 件です。'; },
+      stats2: function (u, p, r, w) { return '人に回された報告 ' + u + ' 件のうち、人が公開したのは ' + p + ' 件、公開しなかったのは ' + r + ' 件です。' + w + ' 件はまだレビュー待ちです。'; },
+      statsCorrected: function (c) { return '人が AI の回答を 1 つ以上訂正した報告は ' + c + ' 件です。'; },
       statsNone: 'この 7 日間の報告はまだありません。あなたの報告が最初になります。',
-      statsSource: 'Pointsman の判定の記録から集計しています。判定はすべて記録されます。',
+      statsSource: 'Pointsman の判定ログから集計しています。判定はすべて記録されます。',
       mapTitle: '市の地図', hq: '災害対策本部', residents: '住民向け',
       capNone: 'この 1 日の報告がすべて地図に載っています。あなたの報告も、送るとすぐに載ります。',
-      capHq: '災害対策本部では、人の確認待ちも含めてすべての報告が見えます。',
+      capHq: '災害対策本部では、レビュー待ちも含めてすべての報告が見えます。',
       capResYes: 'あなたの報告は住民に見えています。', capResNo: '住民に見えるのは公開された報告だけです。あなたの報告は（まだ）載っていません。',
       capRes: '住民に見えるのは公開された報告だけです。',
-      lgPublish: '公開', lgReview: '人の確認待ち', lgUrgent: '緊急', lgReject: '非公開', lgPending: '判定中',
+      lgPublish: '公開', lgReview: 'レビュー待ち', lgUrgent: '緊急', lgReject: '非公開', lgPending: '判定中',
       floodLayer: '洪水浸水想定区域（想定最大規模）',
       ago: function (s) { return s < 60 ? s + ' 秒前' : Math.round(s / 60) + ' 分前'; },
+      sec: ' 秒',
       aSteps: '手順', aWhose: '誰の地図か', aMap: '報告の地図', aTheme: '表示テーマを切り替える',
       footer: '場所は実在、出来事は架空です。個人情報は入れないでください。地図：<a href="https://maps.gsi.go.jp/development/ichiran.html">地理院タイル</a>。',
     },
@@ -408,6 +415,8 @@
     return e;
   }
   function $(id) { return document.getElementById(id); }
+  // Smooth scrolling only for visitors who have not asked for less motion.
+  function scrollMode() { return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'; }
 
   // The page redraws parts of itself when new data comes (a poll, the second
   // check, the 8-second list update). A <details> the visitor opened stays
@@ -446,6 +455,7 @@
     renderStats();
     if ($('how').hasAttribute('open')) renderHowGraph();
     renderShelterLabel();
+    localizeMap();
     if (current) renderCurrent();
     else renderDev();
   }
@@ -476,7 +486,10 @@
     var card = document.querySelector('.map-card');
     // Beside the steps: sticky, and on the same row (with a side panel open the card wraps below).
     var beside = getComputedStyle(card).position === 'sticky' && card.getBoundingClientRect().left >= document.querySelector('.steps').getBoundingClientRect().right;
-    if (scroll) (beside ? document.querySelector('.flow') : $('stepper')).scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (scroll) (beside ? document.querySelector('.flow') : $('stepper')).scrollIntoView({ behavior: scrollMode(), block: 'start' });
+    // The button just pressed was in the step now hidden: focus goes to the new step's
+    // heading, not back to the page body (only on a move, not at the start).
+    if (scroll) $('step-' + s).querySelector('h2').focus({ preventScroll: true });
     renderMapReport();
     // The card scrolls inside when it is taller than the window: show its top (the report) again.
     card.scrollTop = 0;
@@ -488,7 +501,15 @@
     document.querySelectorAll('details.src[open]').forEach(function (d) { if (d !== except) { d.open = false; } });
   }
   document.addEventListener('toggle', function (e) { if (e.target.matches && e.target.matches('details.src') && e.target.open) closeSources(e.target); }, true);
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeSources(null); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    if (document.querySelector('details.src[open]')) { closeSources(null); return; }
+    if ($('how').hasAttribute('open')) return; // the dialog closes by itself
+    // A side panel closes when focus is in it, or when it covers the page (narrow screens).
+    var narrow = !window.matchMedia('(min-width: 1100px)').matches;
+    var inside = function (id) { return !$(id).hidden && (narrow || $(id).contains(document.activeElement)); };
+    if (inside('activity')) { setActivity(false); $('activity-toggle').focus(); } else if (inside('dev')) { setDev(false); $('dev-toggle').focus(); }
+  });
   document.addEventListener('click', function (e) { if (!e.target.closest('details.src')) closeSources(null); });
 
   /** Steps 3 and 4 no longer show the report: it stays above the map. */
@@ -586,13 +607,17 @@
     var rank = function (p) { var i = order.indexOf(p.id); return i < 0 ? order.length : i; };
     config.prepared.slice().sort(function (a, b) { return rank(a) - rank(b); }).forEach(function (p) {
       if (p.featured) {
-        featured.appendChild(el('li', null, [el('button', { type: 'button', class: 'card', onclick: function () { send(p); } }, [
-          el('span', { class: 'label', text: p.featured[lang] }),
-          el('strong', { class: 'road', text: titleOf(p) }),
-          placeOf(p) ? el('span', { class: 'place', text: placeOf(p) }) : null,
-          el('span', { class: 'text', text: quote(p.description[lang]) }),
-          el('span', { class: 'checks-hint' }, [el('span', { text: t('mapChecks') })].concat(checksOf(p).map(function (c) {
-            return el('span', { class: 'chip-map', text: t('ch')[c] });
+        // The title is the button's name; the rest describes it.
+        var id = 'card-' + p.id;
+        var desc = [id + '-label', placeOf(p) ? id + '-place' : null, id + '-text', id + '-checks'].filter(Boolean).join(' ');
+        featured.appendChild(el('li', null, [el('button', { type: 'button', class: 'card', 'aria-labelledby': id + '-title', 'aria-describedby': desc, onclick: function () { send(p); } }, [
+          el('span', { class: 'label', id: id + '-label', text: p.featured[lang] }),
+          el('strong', { class: 'road', id: id + '-title', text: titleOf(p) }),
+          placeOf(p) ? el('span', { class: 'place', id: id + '-place', text: placeOf(p) }) : null,
+          el('span', { class: 'text', id: id + '-text', text: quote(p.description[lang]) }),
+          // Hidden commas between the chips, so the description reads as a list.
+          el('span', { class: 'checks-hint', id: id + '-checks' }, [el('span', { text: t('mapChecks') })].concat(checksOf(p).map(function (c, i) {
+            return el('span', { class: 'chip-map' }, [i ? el('span', { class: 'sr-only', text: lang === 'ja' ? '、' : ', ' }) : null, t('ch')[c]]);
           }))),
         ])]));
       } else {
@@ -745,7 +770,7 @@
 
   function seconds(from, to) {
     var a = Date.parse(from), b = Date.parse(to);
-    return isFinite(a) && isFinite(b) ? ((b - a) / 1000).toFixed(1) + ' s' : '';
+    return isFinite(a) && isFinite(b) ? ((b - a) / 1000).toFixed(1) + t('sec') : '';
   }
 
   function renderCurrent() {
@@ -1053,9 +1078,11 @@
       return;
     }
     var words = t('fin')[f.action] || [t('act')[f.action] || f.action, ''];
-    var rules = t('rules3');
-    var rule = Object.prototype.hasOwnProperty.call(rules, f.policyRule === undefined ? 'default' : f.policyRule) ? rules[f.policyRule === undefined ? 'default' : f.policyRule] : null;
     var person = r.check.finalAction || r.visitorDecision;
+    // Rule 3 publishes after the first check or after a person: say which one.
+    var rules = person ? Object.assign({}, t('rules3'), t('rules3Person')) : t('rules3');
+    var ruleKey = f.policyRule === undefined ? 'default' : f.policyRule;
+    var rule = Object.prototype.hasOwnProperty.call(rules, ruleKey) ? rules[ruleKey] : null;
     var ev = r.evacuation;
     // What it was made from, as the chain it went through: each earlier
     // result with its colour, in order, the person's answer last.
@@ -1119,7 +1146,7 @@
     graphAt[l + ':fetching'] = true;
     fetch('/api/graph?format=svg&lang=' + l).then(function (r) { return r.ok ? r.text() : ''; }).catch(function () { return ''; }).then(function (text) {
       graphAt[l + ':fetching'] = false;
-      var svg = cleanSvg(text);
+      var svg = nameArrows(cleanSvg(text), l);
       if (!svg) {
         // A diagram shown already stays; it is tried again at the next redraw after the TTL.
         if (had) { graphAt[l] = Date.now(); return; }
@@ -1134,6 +1161,29 @@
       var spot = now && now.querySelector('.graph-svg');
       if (spot) { spot.textContent = ''; spot.appendChild(svg.cloneNode(true)); now.hidden = false; }
     });
+  }
+
+  // The arrows are labelled with the names the final profile reads its inputs
+  // by (check, evacuation); a visitor gets words instead, in the label and in
+  // the diagram's description for screen readers.
+  function nameArrows(svg, l) {
+    if (!svg) return svg;
+    var names = T[l].graphNames;
+    Array.prototype.slice.call(svg.querySelectorAll('text.l')).forEach(function (n) {
+      if (Object.prototype.hasOwnProperty.call(names, n.textContent)) {
+        n.textContent = names[n.textContent];
+        n.removeAttribute('textLength');
+        n.removeAttribute('lengthAdjust');
+      }
+    });
+    var label = svg.getAttribute('aria-label');
+    var cut = label ? Math.max(label.lastIndexOf(': '), label.lastIndexOf('：')) : -1;
+    if (cut >= 0) {
+      svg.setAttribute('aria-label', label.slice(0, cut) + label.slice(cut).replace(/[A-Za-z_]+/g, function (w) {
+        return Object.prototype.hasOwnProperty.call(names, w) ? names[w] : w;
+      }));
+    }
+    return svg;
   }
 
   // Only what Pointsman's diagram uses (src/graph.ts toSvg): SVG elements and
@@ -1688,8 +1738,38 @@
 
   if (window.pmtiles && window.maplibregl) maplibregl.addProtocol('pmtiles', new pmtiles.Protocol().tile);
 
+  // MapLibre's own texts (hints, button names), which screen readers read too.
+  var MAP_LOCALE = {
+    en: {
+      'NavigationControl.ZoomIn': 'Zoom in', 'NavigationControl.ZoomOut': 'Zoom out', 'AttributionControl.ToggleAttribution': 'Toggle attribution',
+      'CooperativeGesturesHandler.WindowsHelpText': 'Use Ctrl + scroll to zoom the map', 'CooperativeGesturesHandler.MacHelpText': 'Use ⌘ + scroll to zoom the map',
+      'CooperativeGesturesHandler.MobileHelpText': 'Use two fingers to move the map', 'Map.Title': 'Map',
+    },
+    ja: {
+      'NavigationControl.ZoomIn': '拡大', 'NavigationControl.ZoomOut': '縮小', 'AttributionControl.ToggleAttribution': '出典の表示を切り替える',
+      'CooperativeGesturesHandler.WindowsHelpText': '地図を拡大・縮小するには Ctrl を押しながらスクロールします', 'CooperativeGesturesHandler.MacHelpText': '地図を拡大・縮小するには ⌘ を押しながらスクロールします',
+      'CooperativeGesturesHandler.MobileHelpText': '地図を動かすには 2 本の指を使います', 'Map.Title': '地図',
+    },
+  };
+
+  // MapLibre writes these texts once, when the map is made: a language switch sets them again.
+  function localizeMap() {
+    if (!map) return;
+    var w = MAP_LOCALE[lang];
+    var c = map.getContainer();
+    var set = function (sel, text, attrs) {
+      c.querySelectorAll(sel).forEach(function (n) { if (attrs) attrs.forEach(function (a) { n.setAttribute(a, text); }); else n.textContent = text; });
+    };
+    set('.maplibregl-ctrl-zoom-in', w['NavigationControl.ZoomIn'], ['title', 'aria-label']);
+    set('.maplibregl-ctrl-zoom-out', w['NavigationControl.ZoomOut'], ['title', 'aria-label']);
+    set('.maplibregl-ctrl-attrib-button', w['AttributionControl.ToggleAttribution'], ['title', 'aria-label']);
+    set('.maplibregl-desktop-message', w[/Mac|iPhone|iPad/.test(navigator.platform) ? 'CooperativeGesturesHandler.MacHelpText' : 'CooperativeGesturesHandler.WindowsHelpText']);
+    set('.maplibregl-mobile-message', w['CooperativeGesturesHandler.MobileHelpText']);
+    set('canvas.maplibregl-canvas', w['Map.Title'], ['aria-label']);
+  }
+
   function makeMap() {
-    var m = new maplibregl.Map({ container: 'map', style: style(), center: CENTER, zoom: 13.4, attributionControl: { compact: true }, cooperativeGestures: true });
+    var m = new maplibregl.Map({ container: 'map', style: style(), center: CENTER, zoom: 13.4, attributionControl: { compact: true }, cooperativeGestures: true, locale: MAP_LOCALE[lang] });
     m.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
     m.on('load', function () {
       // The attribution starts folded: the (i) button opens it.
@@ -1978,7 +2058,7 @@
     if (!devOn) return;
     var n = e.target.closest('[data-dev]');
     var row = n && document.querySelector('#dev .ev[data-dev="' + n.getAttribute('data-dev') + '"]');
-    if (row) row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    if (row) row.scrollIntoView({ behavior: scrollMode(), block: 'nearest' });
   }
   $('view-hq').addEventListener('click', function () { setView('hq'); });
   $('view-res').addEventListener('click', function () { setView('res'); });
