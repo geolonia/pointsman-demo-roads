@@ -122,7 +122,7 @@
       showDecision3: 'Decision entity of the final result',
       graphKicker: 'How the city decides', graphText: 'A report goes from left to right. Each box is a profile with its own rules. A report published by the first check goes straight to the final result.',
       graphDmn: 'Download for DMN tools (.dmn)',
-      graphNames: { check: 'first check', evacuation: 'walk to site' },
+      graphNames: { check: 'first check', evacuation: 'additional check' },
       // evacuation-access-check (pointsman-config): its rules, by index.
       rules2: {
         '0': 'An evacuation site within 1 km, people on foot cannot pass, and the way around is at least 200 m longer: the site’s staff get an alert.',
@@ -131,7 +131,7 @@
       ruleUnknown: function (n) { return 'Rule ' + n + ' of the profile (this page does not describe it yet).'; },
       act: { publish: 'publish', review: 'review', urgent: 'urgent', reject: 'rejected', pending: 'being checked', alert: 'alert', none: 'no alert' },
       resultTitle: 'Final result',
-      oPublish: 'Publish: no person needed', ePublish: 'No person was needed. The report is on the residents’ map, seconds after it was sent.',
+      oPublish: 'Publish at once', ePublish: 'No person was needed. The report is on the residents’ map, seconds after it was sent.',
       oReview: 'Waiting for a person', eReview: 'Headquarters sees it. Residents don’t, until someone checks it.',
       oUrgent: 'Urgent: a person sees it first', eUrgent: 'It is at the top of the list at headquarters. Residents see it once a person has checked it.',
       oFinalPublish: 'Published after a check', eFinalPublish: 'A person checked it. Residents see it now.',
@@ -304,15 +304,15 @@
       showDecision3: '最終結果の Decision エンティティ',
       graphKicker: '市の判定の流れ', graphText: '報告は左から右へ進みます。箱 1 つが、それぞれのルールをもつ 1 つのプロファイルです。最初の判定で公開された報告は、そのまま最終結果に進みます。',
       graphDmn: 'DMN ツール用にダウンロード（.dmn）',
-      graphNames: { check: '最初の判定', evacuation: '避難の判定' },
+      graphNames: { check: '最初の判定', evacuation: '追加の判定' },
       rules2: {
         '0': '1 km 以内に避難場所があり、歩いて通れず、迂回すると 200 m 以上長くなるので、避難場所の担当者に知らせます。',
         '1': '避難場所の近くですが、迂回路を求められなかったので、人が確認します。',
       },
       ruleUnknown: function (n) { return 'プロファイルのルール ' + n + '（このページではまだ説明していません）。'; },
-      act: { publish: '公開', review: '要確認', urgent: '緊急', reject: '非公開', pending: '判定中', alert: '担当者に知らせる', none: '知らせなし' },
+      act: { publish: '公開', review: '要確認', urgent: '緊急', reject: '非公開', pending: '判定中', alert: '担当者に知らせる', none: '知らせない' },
       resultTitle: '最終結果',
-      oPublish: '公開：人の確認は不要', ePublish: '人の確認は不要でした。送ってから数秒で、住民向けの地図に載りました。',
+      oPublish: 'すぐに公開', ePublish: '人の確認は不要でした。送ってから数秒で、住民向けの地図に載りました。',
       oReview: 'レビュー待ち', eReview: '災害対策本部では見えます。住民には、誰かが確認するまで見えません。',
       oUrgent: '緊急：真っ先に人が確認します', eUrgent: '災害対策本部の一覧のいちばん上に出ます。住民には、人が確認してから見えます。',
       oFinalPublish: '確認のうえ公開', eFinalPublish: '人が確認しました。住民が見られます。',
@@ -1170,8 +1170,9 @@
     if (!svg) return svg;
     var names = T[l].graphNames;
     Array.prototype.slice.call(svg.querySelectorAll('text.l')).forEach(function (n) {
-      if (Object.prototype.hasOwnProperty.call(names, n.textContent)) {
-        n.textContent = names[n.textContent];
+      var m = /^([A-Za-z_]+)(.*)$/.exec(n.textContent);
+      if (m && Object.prototype.hasOwnProperty.call(names, m[1])) {
+        n.textContent = names[m[1]] + m[2];
         n.removeAttribute('textLength');
         n.removeAttribute('lengthAdjust');
       }
@@ -1743,12 +1744,12 @@
     en: {
       'NavigationControl.ZoomIn': 'Zoom in', 'NavigationControl.ZoomOut': 'Zoom out', 'AttributionControl.ToggleAttribution': 'Toggle attribution',
       'CooperativeGesturesHandler.WindowsHelpText': 'Use Ctrl + scroll to zoom the map', 'CooperativeGesturesHandler.MacHelpText': 'Use ⌘ + scroll to zoom the map',
-      'CooperativeGesturesHandler.MobileHelpText': 'Use two fingers to move the map', 'Map.Title': 'Map',
+      'CooperativeGesturesHandler.MobileHelpText': 'Use two fingers to move the map', 'Map.Title': 'Map', 'Marker.Title': 'Map marker',
     },
     ja: {
       'NavigationControl.ZoomIn': '拡大', 'NavigationControl.ZoomOut': '縮小', 'AttributionControl.ToggleAttribution': '出典の表示を切り替える',
       'CooperativeGesturesHandler.WindowsHelpText': '地図を拡大・縮小するには Ctrl を押しながらスクロールします', 'CooperativeGesturesHandler.MacHelpText': '地図を拡大・縮小するには ⌘ を押しながらスクロールします',
-      'CooperativeGesturesHandler.MobileHelpText': '地図を動かすには 2 本の指を使います', 'Map.Title': '地図',
+      'CooperativeGesturesHandler.MobileHelpText': '地図を動かすには 2 本の指を使います', 'Map.Title': '地図', 'Marker.Title': '地図の印',
     },
   };
 
@@ -1763,9 +1764,8 @@
     set('.maplibregl-ctrl-zoom-in', w['NavigationControl.ZoomIn'], ['title', 'aria-label']);
     set('.maplibregl-ctrl-zoom-out', w['NavigationControl.ZoomOut'], ['title', 'aria-label']);
     set('.maplibregl-ctrl-attrib-button', w['AttributionControl.ToggleAttribution'], ['title', 'aria-label']);
-    set('.maplibregl-desktop-message', w[/Mac|iPhone|iPad/.test(navigator.platform) ? 'CooperativeGesturesHandler.MacHelpText' : 'CooperativeGesturesHandler.WindowsHelpText']);
+    set('.maplibregl-desktop-message', w[navigator.userAgent.includes('Mac') ? 'CooperativeGesturesHandler.MacHelpText' : 'CooperativeGesturesHandler.WindowsHelpText']);
     set('.maplibregl-mobile-message', w['CooperativeGesturesHandler.MobileHelpText']);
-    set('canvas.maplibregl-canvas', w['Map.Title'], ['aria-label']);
   }
 
   function makeMap() {
@@ -1940,13 +1940,20 @@
     map.getSource('route').setData({ type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'LineString', coordinates: line }, properties: { mode: name } }] });
     if (routeMarker) routeMarker.remove();
     var label = name === 'drive' ? 'fCarMap' : 'fRouteMap';
-    var node = el('div', { class: 'route-pin' + (name === 'drive' ? ' car' : '') }, [el('span', { class: 'name', text: t(label)(f.values.extra_m) })]);
+    // The marker's name is its text (else MapLibre names it "Map marker", in English).
+    var node = el('div', { class: 'route-pin' + (name === 'drive' ? ' car' : ''), 'aria-label': t(label)(f.values.extra_m) }, [el('span', { class: 'name', text: t(label)(f.values.extra_m) })]);
     routeMarker = new maplibregl.Marker({ element: node, anchor: 'center' }).setLngLat(line[Math.floor(line.length / 2)]).addTo(map);
     routeMarker.demoFact = f.values;
     routeMarker.demoLabel = label;
     setShelterVisible();
     routeMarker.demoLine = line;
     fitMapChecks();
+  }
+
+  /** A marker's text and, the same, its name for screen readers. */
+  function pinText(marker, text) {
+    marker.getElement().querySelector('.name').textContent = text;
+    marker.getElement().setAttribute('aria-label', text);
   }
 
   function showShelter(facts) {
@@ -1973,7 +1980,7 @@
       if (!best) return;
       clearShelter();
       map.getSource('shelter').setData({ type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'LineString', coordinates: [best.from, best.at] }, properties: {} }] });
-      var node = el('div', { class: 'shelter-pin' }, [el('span', { class: 'mark', 'aria-hidden': 'true' }), el('span', { class: 'name', text: t('fShelterMap')(String(f.values.name), f.values.distance_m) })]);
+      var node = el('div', { class: 'shelter-pin', 'aria-label': t('fShelterMap')(String(f.values.name), f.values.distance_m) }, [el('span', { class: 'mark', 'aria-hidden': 'true' }), el('span', { class: 'name', text: t('fShelterMap')(String(f.values.name), f.values.distance_m) })]);
       shelterMarker = new maplibregl.Marker({ element: node, anchor: 'bottom', offset: [0, 10] }).setLngLat(best.at).addTo(map);
       shelterMarker.demoFact = f.values;
       setShelterVisible();
@@ -1988,9 +1995,9 @@
   function renderShelterLabel() {
     if (shelterMarker) {
       var v = shelterMarker.demoFact;
-      shelterMarker.getElement().querySelector('.name').textContent = t('fShelterMap')(String(v.name), v.distance_m);
+      pinText(shelterMarker, t('fShelterMap')(String(v.name), v.distance_m));
     }
-    if (routeMarker) routeMarker.getElement().querySelector('.name').textContent = t(routeMarker.demoLabel || 'fRouteMap')(routeMarker.demoFact.extra_m);
+    if (routeMarker) pinText(routeMarker, t(routeMarker.demoLabel || 'fRouteMap')(routeMarker.demoFact.extra_m));
   }
 
   /** Like the flood zones, the evacuation site is for headquarters only. */
