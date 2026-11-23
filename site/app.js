@@ -1766,6 +1766,7 @@
     set('.maplibregl-ctrl-attrib-button', w['AttributionControl.ToggleAttribution'], ['title', 'aria-label']);
     set('.maplibregl-desktop-message', w[navigator.userAgent.includes('Mac') ? 'CooperativeGesturesHandler.MacHelpText' : 'CooperativeGesturesHandler.WindowsHelpText']);
     set('.maplibregl-mobile-message', w['CooperativeGesturesHandler.MobileHelpText']);
+    map.getCanvas().setAttribute('aria-label', w['Map.Title']);
   }
 
   function makeMap() {
