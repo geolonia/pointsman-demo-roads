@@ -838,6 +838,29 @@ describe('cleanup when something fails (#114) and old reviews (#115)', () => {
     expect(errors).toHaveBeenCalledWith(expect.stringContaining('cleanup: urn:ngsi-ld:RoadRestriction:demo-a'));
   });
 
+  it('keeps the report when a final Decision cannot be deleted, so the next run finds the rest of the chain (#124)', async () => {
+    const created = old();
+    answer = (c) => {
+      if (c.method === 'GET' && c.url.includes('/entities?type=RoadRestriction')) {
+        return Response.json([{ id: 'urn:ngsi-ld:RoadRestriction:demo-a', type: 'RoadRestriction', createdAt: created,
+          final: { type: 'Property', value: 'publish', decision: { type: 'Relationship', object: 'urn:ngsi-ld:Decision:f-2' } } }]);
+      }
+      if (c.method === 'GET' && c.url.includes(encodeURIComponent('urn:ngsi-ld:Decision:f-2'))) {
+        return Response.json({ id: 'urn:ngsi-ld:Decision:f-2', type: 'Decision', 'http://purl.org/dc/terms/replaces': { type: 'Relationship', object: 'urn:ngsi-ld:Decision:f-1' } });
+      }
+      if (c.method === 'GET' && c.url.includes(encodeURIComponent('urn:ngsi-ld:Decision:f-1'))) return Response.json({ id: 'urn:ngsi-ld:Decision:f-1', type: 'Decision' });
+      if (c.method === 'DELETE') return new Response(null, { status: c.url.endsWith(encodeURIComponent('urn:ngsi-ld:Decision:f-1')) ? 503 : 204 });
+      return undefined;
+    };
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await cleanup(env)).toMatchObject({ deleted: 0, failed: 1 });
+    const deletes = calls.filter((c) => c.method === 'DELETE').map((c) => decodeURIComponent(c.url.split('/entities/')[1]!));
+    // f-1 failed, so the report is not deleted: the next run starts again at its
+    // final link (f-2, then gone from the broker, is looked up in Pointsman).
+    expect(deletes).toEqual(['urn:ngsi-ld:Decision:f-2', 'urn:ngsi-ld:Decision:f-1']);
+    expect(errors).toHaveBeenCalledWith(expect.stringContaining('cleanup: urn:ngsi-ld:RoadRestriction:demo-a'));
+  });
+
   it('goes on with the other issues when closing one fails', async () => {
     answer = (c) => {
       if (c.method === 'GET' && c.url.includes('/entities?type=RoadRestriction')) return Response.json([]);
@@ -1040,6 +1063,20 @@ describe("the bridge's queue (pointsman#88)", () => {
     await consume(m);
     expect(m.ack).toHaveBeenCalled();
     expect(calls.find((c) => c.url.endsWith('/repos/geolonia/pointsman-demo-roads/issues'))?.body.labels).toEqual(['demo', 'urgent']);
+  });
+
+  it('opens no issue, and says so in the log, when neither the entity nor KV says what the report is (#124)', async () => {
+    pointsmanSays('urgent');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const m = message({ path: '/notify', entity: report });
+    await consume(m);
+    // The decision is written; only the issue is left out.
+    expect(m.ack).toHaveBeenCalled();
+    expect(m.retry).not.toHaveBeenCalled();
+    expect(calls.some((c) => c.url.endsWith('/v1/decide/road-restriction-check'))).toBe(true);
+    expect(calls.some((c) => c.url.endsWith('/repos/geolonia/pointsman-demo-roads/issues'))).toBe(false);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(`no record of the report ${report.id}, so no issue`));
+    expect(await used('issues')).toBe(0);
   });
 
   it('reads demoReport also expanded with the default vocabulary (#113)', async () => {

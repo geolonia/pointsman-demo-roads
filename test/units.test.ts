@@ -180,11 +180,13 @@ describe('the default fetch', () => {
   it('works when called through the classes', async () => {
     const { Broker } = await import('../src/broker');
     const { GitHub } = await import('../src/github');
-    const env = { BROKER_URL: 'http://127.0.0.1:9', BROKER_API_KEY: 'k', BROKER_TENANT: 't', GITHUB_REPOSITORY: 'o/r' } as never;
-    // Connection refused is fine; "Illegal invocation" is not.
-    await expect(new Broker(env).listRoadRestrictions()).rejects.not.toThrow(/Illegal invocation/);
+    // A scheme fetch refuses before it connects: a real connection that fails
+    // makes workerd log "Network connection lost" after the test (#124).
+    const env = { BROKER_URL: 'ftp://127.0.0.1:9', BROKER_API_KEY: 'k', BROKER_TENANT: 't', GITHUB_REPOSITORY: 'o/r' } as never;
+    // Refused is fine; "Illegal invocation" (an unbound fetch) is not.
+    await expect(new Broker(env).listRoadRestrictions()).rejects.toThrow(/ftp/);
     const gh = new GitHub(env) as unknown as { fetchFn: typeof fetch };
-    await expect(gh.fetchFn('http://127.0.0.1:9')).rejects.not.toThrow(/Illegal invocation/);
+    await expect(gh.fetchFn('ftp://127.0.0.1:9')).rejects.toThrow(/ftp/);
   });
 });
 
