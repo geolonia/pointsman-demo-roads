@@ -311,7 +311,7 @@ if the weekly runs stop, enable the workflow again in the Actions tab.
 
 ## Development
 
-Node.js 24, pnpm 12.
+Node.js 24.15 or newer (not 25, which jsdom for the page tests does not support), pnpm 12.
 
 ```sh
 pnpm install
