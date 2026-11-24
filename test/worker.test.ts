@@ -552,9 +552,10 @@ describe('reviews from GitHub', () => {
       }] }),
     });
     expect(await res.json()).toEqual({ handled: [{ id: 'urn:ngsi-ld:Issue:redmine:demo:12', resolves: D, finalAction: 'reject' }] });
-    expect(calls.find((c) => c.method === 'POST' && c.url.includes(encodeURIComponent(D)))!.body).toMatchObject({
-      reviewStatus: P('resolved'), finalAction: P('reject'), reviewedBy: P('redmine:demo#12'),
-    });
+    // Two writes since engine 0.24.1: the answer, then reviewStatus, which the /reviews subscription watches (pointsman#347).
+    const [answerWrite, resolveWrite] = calls.filter((c) => c.method === 'POST' && c.url.includes(encodeURIComponent(D)));
+    expect(answerWrite!.body).toMatchObject({ finalAction: P('reject'), reviewedBy: P('redmine:demo#12') });
+    expect(resolveWrite!.body).toMatchObject({ reviewStatus: P('resolved') });
   });
 
   it('passes resolved Decisions from the broker to the bridge (/reviews)', async () => {
