@@ -319,11 +319,11 @@ describe('the weekly examples check, failures', () => {
     expect(r.markdown).toContain('| default |');
   });
 
-  it('escapes a backslash before a pipe, so the data cannot add a column', () => {
-    const r = report([{ id: 'a\\|b', lang: 'en', expected: 'publish', error: 'x\\|y\nz' }]);
+  it('escapes a backslash before a pipe and turns every line break into <br>, so the data cannot break the row', () => {
+    const r = report([{ id: 'a\\|b', lang: 'en', expected: 'publish', error: 'x\\|y\nz\rw\r\nv' }]);
     const row = r.markdown.split('\n').find((line: string) => line.startsWith('| a'))!;
     expect(row).toContain('| a\\\\\\|b |');
-    expect(row).toContain('| x\\\\\\|y<br>z |');
+    expect(row).toContain('| x\\\\\\|y<br>z<br>w<br>v |');
   });
 });
 
