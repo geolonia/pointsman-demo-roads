@@ -604,7 +604,7 @@ describe('reviews from GitHub', () => {
         expect(await res.json()).toEqual({ ignored: 'not a demo issue' });
       }
     }
-    expect(calls.filter((c) => c.url.startsWith('https://api.github.com') || c.url.startsWith('https://pointsman') || c.url.startsWith(BROKER))).toHaveLength(0);
+    expect(calls).toEqual([]);
   });
 
   it('answers a person who may not review once per issue, not for every comment (#120)', async () => {
