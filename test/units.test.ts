@@ -318,6 +318,13 @@ describe('the weekly examples check, failures', () => {
     // No rule in the answer: the default rule.
     expect(r.markdown).toContain('| default |');
   });
+
+  it('escapes a backslash before a pipe, so the data cannot add a column', () => {
+    const r = report([{ id: 'a\\|b', lang: 'en', expected: 'publish', error: 'x\\|y\nz' }]);
+    const row = r.markdown.split('\n').find((line: string) => line.startsWith('| a'))!;
+    expect(row).toContain('| a\\\\\\|b |');
+    expect(row).toContain('| x\\\\\\|y<br>z |');
+  });
 });
 
 describe('trimUrl', () => {

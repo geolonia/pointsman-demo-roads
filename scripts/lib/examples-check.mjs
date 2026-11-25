@@ -46,8 +46,11 @@ export async function checkExamples({ prepared, toEntity, url, token, fetch: fet
 }
 
 const pct = (x) => (typeof x === 'number' ? x.toFixed(2) : '');
-/** A table cell: no `|` or line break from the data breaks the table. */
-const cell = (x) => String(x ?? '').replace(/\|/g, '\\|').replace(/\r?\n/g, '<br>');
+/**
+ * A table cell: no `|` or line break from the data breaks the table. The
+ * backslash is escaped first, so a `\|` in the data cannot undo the escape.
+ */
+const cell = (x) => String(x ?? '').replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\r?\n/g, '<br>');
 
 /** One line per answer: value and the number the rules read (yes, p or score). */
 function answersText(answers = {}) {
