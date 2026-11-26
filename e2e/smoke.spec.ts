@@ -237,7 +237,7 @@ async function serveMap(page: Page) {
 }
 
 type TestMap = {
-  jumpTo(o: unknown): void; project(l: [number, number]): { x: number; y: number }; getCanvas(): HTMLCanvasElement;
+  jumpTo(o: unknown): void; easeTo(o: unknown): void; project(l: [number, number]): { x: number; y: number }; getCanvas(): HTMLCanvasElement;
   once(e: string, f: () => void): void; getLayoutProperty(l: string, p: string): unknown; getSource(id: string): unknown;
   demoReady?: boolean; querySourceFeatures(id: string): { properties: Record<string, unknown> }[];
 };
@@ -263,10 +263,14 @@ async function showOnMap(page: Page, at: [number, number], zoom: number) {
     if (!spot) { fail(new Error('no free spot on the map')); return; }
     m.jumpTo({ center: lngLat, zoom: z });
     const middle = m.project(lngLat);
-    m.jumpTo({ center: lngLat, zoom: z, offset: [spot.x - box.left - middle.x, spot.y - box.top - middle.y] });
+    // jumpTo ignores offset; easeTo with no duration applies it at once.
+    m.easeTo({ center: lngLat, zoom: z, offset: [spot.x - box.left - middle.x, spot.y - box.top - middle.y], duration: 0 });
     m.once('idle', () => {
       const p = m.project(lngLat);
-      done({ x: box.left + p.x, y: box.top + p.y });
+      const at = { x: box.left + p.x, y: box.top + p.y };
+      // The point must now be on the free spot, not under a panel.
+      if (document.elementFromPoint(at.x, at.y) !== canvas) fail(new Error(`the point is covered at ${Math.round(at.x)},${Math.round(at.y)}`));
+      else done(at);
     });
   }), [at, zoom] as const);
 }
