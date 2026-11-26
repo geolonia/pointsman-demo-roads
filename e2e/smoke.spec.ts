@@ -7,8 +7,10 @@
 // the broker or Pointsman are stubbed here (playwright.config.ts says why);
 // GET /api/config and the page's files come from the Worker itself. Other
 // hosts (map tiles, MapLibre, fonts) are blocked, so the tests do not depend
-// on them: the page works without the map.
+// on them: the page works without the map. The map tests run it with MapLibre
+// from the pinned devDependency and empty tiles (serveMap).
 
+import { readFileSync } from 'node:fs';
 import { test as base, expect, type Page } from '@playwright/test';
 
 const REPORT_ID = 'urn:ngsi-ld:RoadRestriction:demo-00000000-0000-4000-8000-000000000001';
@@ -190,6 +192,102 @@ const test = base.extend<{ pageErrors: string[] }>({
 
 test.beforeEach(async ({ page }) => {
   await stubServices(page);
+});
+
+// A transparent 1×1 PNG: every raster tile (the flood map).
+const BLANK_PNG = readFileSync(new URL('./fixtures/blank-tile.png', import.meta.url));
+
+/**
+ * The map without the network: MapLibre from the pinned devDependency (the
+ * same files as the page's unpkg links, so their integrity hashes match), an
+ * empty vector tile for every GSI base map tile, a blank PNG for every flood
+ * tile, and no shelters. pmtiles stays blocked, so the page uses its plain
+ * tile URLs (its fallback without pmtiles). An init script keeps the page's
+ * map in window.__map, so a test can find a point's pixel.
+ */
+async function serveMap(page: Page) {
+  const dist = new URL('../node_modules/maplibre-gl/dist/', import.meta.url);
+  const files: [string, string][] = [['maplibre-gl.js', 'application/javascript'], ['maplibre-gl.css', 'text/css']];
+  for (const [file, type] of files) {
+    await page.route(`https://unpkg.com/maplibre-gl@5.24.0/dist/${file}`, (route) => route.fulfill({
+      body: readFileSync(new URL(file, dist)), contentType: type, headers: { 'access-control-allow-origin': '*' },
+    }));
+  }
+  const cors = { 'access-control-allow-origin': '*' };
+  await page.route('https://cyberjapandata.gsi.go.jp/xyz/optimal_bvmap-v1/**', (route) => route.fulfill({ body: '', contentType: 'application/x-protobuf', headers: cors }));
+  await page.route('https://cyberjapandata.gsi.go.jp/xyz/skhb01/**', (route) => route.fulfill({ json: { type: 'FeatureCollection', features: [] }, headers: cors }));
+  await page.route('https://disaportaldata.gsi.go.jp/raster/**', (route) => route.fulfill({ body: BLANK_PNG, contentType: 'image/png', headers: cors }));
+  await page.addInitScript(() => {
+    type Lib = { Map: new (o: unknown) => object };
+    let lib: Lib | undefined;
+    Object.defineProperty(window, 'maplibregl', {
+      configurable: true,
+      get: () => lib,
+      set(v: Lib) {
+        const Base = v.Map;
+        v.Map = class extends Base { constructor(o: unknown) { super(o); (window as unknown as { __map: unknown }).__map = this; } };
+        lib = v;
+      },
+    });
+  });
+}
+
+type TestMap = {
+  jumpTo(o: unknown): void; project(l: [number, number]): { x: number; y: number }; getCanvas(): HTMLCanvasElement;
+  once(e: string, f: () => void): void; getLayoutProperty(l: string, p: string): unknown; getSource(id: string): unknown;
+  demoReady?: boolean; querySourceFeatures(id: string): { properties: Record<string, unknown> }[];
+};
+
+/**
+ * Shows a point on the page's map at `zoom`, at a spot of the map that
+ * nothing covers, waits until the map has drawn it, and returns its pixel.
+ */
+async function showOnMap(page: Page, at: [number, number], zoom: number) {
+  await page.locator('#map').scrollIntoViewIfNeeded();
+  return page.evaluate(([lngLat, z]) => new Promise<{ x: number; y: number }>((done, fail) => {
+    const m = (window as unknown as { __map: TestMap }).__map;
+    const canvas = m.getCanvas();
+    const box = canvas.getBoundingClientRect();
+    let spot: { x: number; y: number } | null = null;
+    for (let gy = 1; gy < 8 && !spot; gy++) {
+      for (let gx = 1; gx < 8 && !spot; gx++) {
+        const x = box.left + (box.width * gx) / 8;
+        const y = box.top + (box.height * gy) / 8;
+        if (x >= 0 && y >= 0 && x < innerWidth && y < innerHeight && document.elementFromPoint(x, y) === canvas) spot = { x, y };
+      }
+    }
+    if (!spot) { fail(new Error('no free spot on the map')); return; }
+    m.jumpTo({ center: lngLat, zoom: z });
+    const middle = m.project(lngLat);
+    m.jumpTo({ center: lngLat, zoom: z, offset: [spot.x - box.left - middle.x, spot.y - box.top - middle.y] });
+    m.once('idle', () => {
+      const p = m.project(lngLat);
+      done({ x: box.left + p.x, y: box.top + p.y });
+    });
+  }), [at, zoom] as const);
+}
+
+test('the map: it loads with the flood layer for headquarters, and the recent reports on it', async ({ page }) => {
+  await serveMap(page);
+  await page.goto('/');
+  await expect(page.locator('#map canvas.maplibregl-canvas')).toBeVisible();
+  // The page's own layers are there once the style has loaded.
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __map: TestMap }).__map.demoReady === true)).toBe(true);
+  expect(await page.evaluate(() => (window as unknown as { __map: TestMap }).__map.getLayoutProperty('flood', 'visibility'))).toBe('visible');
+  // The listed report (published) is a point of the reports source.
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __map: TestMap }).__map.querySourceFeatures('reports').map((f) => f.properties.id))).toContain(REPORT_ID);
+});
+
+test('the map: a click on a report opens it', async ({ page }) => {
+  await serveMap(page);
+  await page.goto('/');
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __map: TestMap }).__map.demoReady === true)).toBe(true);
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __map: TestMap }).__map.querySourceFeatures('reports').length)).toBeGreaterThan(0);
+  const opened = page.waitForRequest((r) => r.method() === 'GET' && decodeURIComponent(new URL(r.url()).pathname) === `/api/reports/${REPORT_ID}`);
+  const { x, y } = await showOnMap(page, listed.location.coordinates as [number, number], 16);
+  await page.mouse.click(x, y);
+  await opened;
+  await expect(page.locator('#step-decide')).toBeVisible();
 });
 
 test('the page loads with the prepared reports from the Worker', async ({ page }) => {
