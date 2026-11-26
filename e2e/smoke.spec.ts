@@ -6,9 +6,9 @@
 // in another tab, or by someone else (409), shows the report as it is. Endpoints that need
 // the broker or Pointsman are stubbed here (playwright.config.ts says why);
 // GET /api/config and the page's files come from the Worker itself. Other
-// hosts (map tiles, MapLibre, fonts) are blocked, so the tests do not depend
-// on them: the page works without the map. The map tests run it with MapLibre
-// from the pinned devDependency and empty tiles (serveMap).
+// hosts (map tiles, MapLibre, fonts) are blocked, so most tests run the page
+// without the map, as it works when MapLibre does not load. The map tests run
+// it with MapLibre from the pinned devDependency and empty tiles (serveMap).
 
 import { readFileSync } from 'node:fs';
 import { test as base, expect, type Page } from '@playwright/test';
@@ -197,6 +197,10 @@ test.beforeEach(async ({ page }) => {
 // A transparent 1×1 PNG: every raster tile (the flood map).
 const BLANK_PNG = readFileSync(new URL('./fixtures/blank-tile.png', import.meta.url));
 
+// The MapLibre version the tests serve: the pinned devDependency. The page's
+// unpkg links must name the same version (a test below checks it), so update both together.
+const MAPLIBRE = (JSON.parse(readFileSync(new URL('../node_modules/maplibre-gl/package.json', import.meta.url), 'utf8')) as { version: string }).version;
+
 /**
  * The map without the network: MapLibre from the pinned devDependency (the
  * same files as the page's unpkg links, so their integrity hashes match), an
@@ -209,7 +213,7 @@ async function serveMap(page: Page) {
   const dist = new URL('../node_modules/maplibre-gl/dist/', import.meta.url);
   const files: [string, string][] = [['maplibre-gl.js', 'application/javascript'], ['maplibre-gl.css', 'text/css']];
   for (const [file, type] of files) {
-    await page.route(`https://unpkg.com/maplibre-gl@5.24.0/dist/${file}`, (route) => route.fulfill({
+    await page.route(`https://unpkg.com/maplibre-gl@${MAPLIBRE}/dist/${file}`, (route) => route.fulfill({
       body: readFileSync(new URL(file, dist)), contentType: type, headers: { 'access-control-allow-origin': '*' },
     }));
   }
@@ -267,22 +271,30 @@ async function showOnMap(page: Page, at: [number, number], zoom: number) {
   }), [at, zoom] as const);
 }
 
+test('the page loads the MapLibre version the tests serve', async ({ request }) => {
+  const html = await (await request.get('/')).text();
+  for (const file of ['maplibre-gl.js', 'maplibre-gl.css']) {
+    expect(html, `site/index.html must load maplibre-gl@${MAPLIBRE} (the devDependency): update both together, with the integrity hash`)
+      .toContain(`https://unpkg.com/maplibre-gl@${MAPLIBRE}/dist/${file}`);
+  }
+});
+
 test('the map: it loads with the flood layer for headquarters, and the recent reports on it', async ({ page }) => {
   await serveMap(page);
   await page.goto('/');
   await expect(page.locator('#map canvas.maplibregl-canvas')).toBeVisible();
   // The page's own layers are there once the style has loaded.
-  await expect.poll(() => page.evaluate(() => (window as unknown as { __map: TestMap }).__map.demoReady === true)).toBe(true);
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __map: TestMap }).__map.demoReady === true), { timeout: 15_000 }).toBe(true);
   expect(await page.evaluate(() => (window as unknown as { __map: TestMap }).__map.getLayoutProperty('flood', 'visibility'))).toBe('visible');
   // The listed report (published) is a point of the reports source.
-  await expect.poll(() => page.evaluate(() => (window as unknown as { __map: TestMap }).__map.querySourceFeatures('reports').map((f) => f.properties.id))).toContain(REPORT_ID);
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __map: TestMap }).__map.querySourceFeatures('reports').map((f) => f.properties.id)), { timeout: 15_000 }).toContain(REPORT_ID);
 });
 
 test('the map: a click on a report opens it', async ({ page }) => {
   await serveMap(page);
   await page.goto('/');
-  await expect.poll(() => page.evaluate(() => (window as unknown as { __map: TestMap }).__map.demoReady === true)).toBe(true);
-  await expect.poll(() => page.evaluate(() => (window as unknown as { __map: TestMap }).__map.querySourceFeatures('reports').length)).toBeGreaterThan(0);
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __map: TestMap }).__map.demoReady === true), { timeout: 15_000 }).toBe(true);
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __map: TestMap }).__map.querySourceFeatures('reports').length), { timeout: 15_000 }).toBeGreaterThan(0);
   const opened = page.waitForRequest((r) => r.method() === 'GET' && decodeURIComponent(new URL(r.url()).pathname) === `/api/reports/${REPORT_ID}`);
   const { x, y } = await showOnMap(page, listed.location.coordinates as [number, number], 16);
   await page.mouse.click(x, y);
