@@ -1,6 +1,7 @@
 // Smoke tests: the page loads on the real Worker, its main controls work,
 // and prepared reports go through all four steps: one published at once, one
-// a person publishes (its last step also in Japanese), and one urgent that a person rejects.
+// a person publishes, and one urgent that a person rejects; all three also in
+// Japanese (the person flow's last step).
 // A visitor without the report's key sees who decides; an answer given first
 // in another tab, or by someone else (409), shows the report as it is. Endpoints that need
 // the broker or Pointsman are stubbed here (playwright.config.ts says why);
@@ -413,4 +414,55 @@ test('the person flow in Japanese: the report is sent in Japanese, and the visit
   await expect(duty).toContainText('公開しました。住民向けの地図に載っています。');
   expect(answers).toEqual([{ action: 'publish', key: KEY }]);
   await expect(page.locator('#final .headline')).toHaveText('公開：住民がすぐに見られます', { timeout: 10_000 });
+});
+
+/** Opens the page in Japanese. */
+async function inJapanese(page: Page) {
+  await page.goto('/');
+  await expect(page.locator('#featured button.card')).toHaveCount(4);
+  await page.locator('#lang').click();
+  await expect(page.locator('html')).toHaveAttribute('lang', 'ja');
+}
+
+test('in Japanese: a clear report is published at once, without a person', async ({ page }) => {
+  await inJapanese(page);
+  await sendPrepared(page, 'flooded-underpass', 'ja');
+  // Step 2: the action, in Japanese too.
+  await expect(page.locator('#rule .badge')).toHaveText('公開');
+  await page.locator('#rule').getByRole('button').click();
+  // Step 3: no additional check.
+  await expect(page.locator('#outcome')).toContainText('すぐに公開');
+  await page.locator('#chain').getByRole('button').click();
+  // Step 4: published, nothing for a person.
+  await expect(page.locator('#final .headline')).toHaveText('公開：住民がすぐに見られます');
+  await expect(page.locator('#final .rule-text')).toHaveText('最初の判定ですぐに公開しました。人の確認は不要でした。');
+  await expect(page.locator('#person')).toBeEmpty();
+  await page.getByRole('button', { name: 'ほかの報告を試す' }).click();
+  await expect(page.locator('#step-pick')).toBeVisible();
+});
+
+test('in Japanese: a report of someone in danger is urgent, alerts the site, and the visitor rejects it', async ({ page }) => {
+  const sentAt = Date.now() - 5000;
+  const answers = await stubPersonFlow(page,
+    () => waitingReport(sentAt, { action: 'urgent', policyRule: '0', danger: 0.9 }, { action: 'alert', policyRule: '0' }, { action: 'urgent', policyRule: '2' }, null),
+    (action) => waitingReport(sentAt, { action: 'urgent', policyRule: '0', danger: 0.9 }, { action: 'alert', policyRule: '0' }, { action: 'urgent', policyRule: '2' }, { action, final: { action: 'reject', policyRule: '0' } }));
+  await inJapanese(page);
+  await sendPrepared(page, 'car-trapped', 'ja');
+  // Step 2: someone may be in danger.
+  const rule = page.locator('#rule');
+  await expect(rule.locator('.rule-text')).toHaveText('人に危険がありそうなら、真っ先に人が確認します。');
+  await rule.getByRole('button').click();
+  // Step 3: urgent, and the evacuation site's staff get an alert.
+  await expect(page.locator('#outcome')).toContainText('緊急：真っ先に人が確認します');
+  await expect(page.locator('#chain .chain-result')).toHaveText('避難場所の担当者に知らせました。');
+  await page.locator('#chain').getByRole('button').click();
+  // Step 4: urgent until a person answers; the visitor rejects it.
+  await expect(page.locator('#final .headline')).toHaveText('緊急：人に知らせる必要があります');
+  await expect(page.locator('#final .rule-text')).toHaveText('最初の判定で緊急となり、人はそれと違う回答をしていません。');
+  const duty = page.locator('#person');
+  await duty.getByRole('button', { name: '公開しない' }).click();
+  await expect(duty).toContainText('公開しませんでした。住民には見えません。');
+  await expect(page.locator('#final .headline')).toHaveText('非公開：住民には見えません', { timeout: 10_000 });
+  await expect(page.locator('#final .rule-text')).toHaveText('人が報告を非公開にしたので、非公開のままです。');
+  expect(answers).toEqual([{ action: 'reject', key: KEY }]);
 });
