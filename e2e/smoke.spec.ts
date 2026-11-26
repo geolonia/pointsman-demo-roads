@@ -1,6 +1,6 @@
 // Smoke tests: the page loads on the real Worker, its main controls work,
 // and prepared reports go through all four steps: one published at once, one
-// a person publishes (also in Japanese), and one urgent that a person rejects.
+// a person publishes (its last step also in Japanese), and one urgent that a person rejects.
 // A visitor without the report's key sees who decides; an answer given first
 // in another tab, or by someone else (409), shows the report as it is. Endpoints that need
 // the broker or Pointsman are stubbed here (playwright.config.ts says why);
@@ -11,6 +11,8 @@
 import { test as base, expect, type Page } from '@playwright/test';
 
 const REPORT_ID = 'urn:ngsi-ld:RoadRestriction:demo-00000000-0000-4000-8000-000000000001';
+/** The key the stubbed Worker gives with a report, which the page sends with the visitor's answer. */
+const KEY = 'k'.repeat(32);
 
 /** A report in the shape of GET /api/reports/{id}: published at once, nothing for a person. */
 function publishedReport(sentAt: number) {
@@ -133,7 +135,7 @@ async function stubServices(page: Page) {
   await page.route((url) => url.origin !== origin, (route) => route.abort());
   await page.route('**/api/reports', (route) =>
     route.request().method() === 'POST'
-      ? route.fulfill({ json: { id: REPORT_ID, key: 'k'.repeat(32) } })
+      ? route.fulfill({ json: { id: REPORT_ID, key: KEY } })
       : route.fulfill({ json: { reports: [listed] } }));
   await page.route(/\/api\/reports\/[^/]+$/, (route) => route.fulfill({ json: publishedReport(Date.now() - 5000) }));
   await page.route('**/api/decisions', (route) => route.fulfill({
@@ -285,7 +287,7 @@ test('an unclear report waits for a person, and the visitor publishes it', async
   await expect(duty).toContainText('Published. The residents’ map shows it now.');
   // Until the final result is made again after the answer, the page says so instead of the old one.
   await expect(page.locator('#final')).toContainText('The final result is being decided');
-  expect(answers).toEqual([{ action: 'publish', key: 'k'.repeat(32) }]);
+  expect(answers).toEqual([{ action: 'publish', key: KEY }]);
   // The next poll (after 4 s) brings the final result made again after the answer.
   await expect(page.locator('#final .headline')).toHaveText('Published: residents see it now', { timeout: 10_000 });
   await expect(page.locator('#final .rule-text')).toHaveText('The person who checked the first result published it.');
@@ -317,7 +319,7 @@ test('a report of someone in danger is urgent, alerts the site, and the visitor 
   await duty.getByRole('button', { name: 'Reject it' }).click();
   await expect(duty).toContainText('Rejected. Residents never see it.');
   await expect(page.locator('#final')).toContainText('The final result is being decided');
-  expect(answers).toEqual([{ action: 'reject', key: 'k'.repeat(32) }]);
+  expect(answers).toEqual([{ action: 'reject', key: KEY }]);
   await expect(page.locator('#final .headline')).toHaveText('Rejected: residents never see it', { timeout: 10_000 });
   await expect(page.locator('#final .rule-text')).toHaveText('A person rejected the report: it stays rejected.');
 });
@@ -370,7 +372,7 @@ test('an answer given first in another tab: the page shows that answer, not an e
   await duty.getByRole('button', { name: 'Reject it' }).click();
   await expect(duty).toContainText('Published. The residents’ map shows it now.');
   await expect(duty.locator('[role="alert"]')).toHaveCount(0);
-  expect(answers).toEqual([{ action: 'reject', key: 'k'.repeat(32) }]);
+  expect(answers).toEqual([{ action: 'reject', key: KEY }]);
   await expect(page.locator('#final .headline')).toHaveText('Published: residents see it now', { timeout: 10_000 });
   // The 409 is this test's own answer: not a page error.
   pageErrors.splice(0, pageErrors.length, ...pageErrors.filter((e) => !/^409 POST .*\/resolve$/.test(e)));
@@ -385,9 +387,10 @@ test('an answer someone else gave first: the page shows the report as it is now,
   await toResult(page);
   const duty = page.locator('#person');
   await duty.getByRole('button', { name: 'Reject it' }).click();
-  expect(answers).toEqual([{ action: 'reject', key: 'k'.repeat(32) }]);
   await expect(page.locator('#final .headline')).toHaveText('Published: residents see it now');
   await expect(page.locator('#final .rule-text')).toHaveText('The person who checked the first result published it.');
+  // Checked once the page shows the result: the click returns before the stub has the answer.
+  expect(answers).toEqual([{ action: 'reject', key: KEY }]);
   // Not this visitor's answer: no "you published it", and nothing to answer.
   await expect(duty).toBeEmpty();
   // The 409 is this test's own answer: not a page error.
@@ -408,6 +411,6 @@ test('the person flow in Japanese: the report is sent in Japanese, and the visit
   await expect(duty.locator('.box-title')).toHaveText('あなたが担当者です');
   await duty.getByRole('button', { name: '公開する' }).click();
   await expect(duty).toContainText('公開しました。住民向けの地図に載っています。');
-  expect(answers).toEqual([{ action: 'publish', key: 'k'.repeat(32) }]);
+  expect(answers).toEqual([{ action: 'publish', key: KEY }]);
   await expect(page.locator('#final .headline')).toHaveText('公開：住民がすぐに見られます', { timeout: 10_000 });
 });
