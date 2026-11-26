@@ -1,6 +1,8 @@
 // Smoke tests: the page loads on the real Worker, its main controls work,
 // and prepared reports go through all four steps: one published at once, one
-// a person publishes, and one urgent that a person rejects. Endpoints that need
+// a person publishes (also in Japanese), and one urgent that a person rejects.
+// A visitor without the report's key sees who decides; an answer given first
+// in another tab, or by someone else (409), shows the report as it is. Endpoints that need
 // the broker or Pointsman are stubbed here (playwright.config.ts says why);
 // GET /api/config and the page's files come from the Worker itself. Other
 // hosts (map tiles, MapLibre, fonts) are blocked, so the tests do not depend
@@ -84,27 +86,34 @@ function waitingReport(sentAt: number, first: { action: 'review' | 'urgent'; pol
 /**
  * Serves a waiting report until the visitor answers (POST .../resolve, as
  * the Worker answers it), then the report as it is after that answer.
- * Returns what the page sent with its answer.
+ * `conflict`: the Worker answers 409 instead, as when the answer was given
+ * first (with `finalAction`: by this visitor in another tab; without: by
+ * someone else, whose answer `after` then gets). Returns what the page sent
+ * with its answer.
  */
-async function stubPersonFlow(page: Page, before: () => unknown, after: (answer: Answer) => unknown) {
+async function stubPersonFlow(page: Page, before: () => unknown, after: (answer: Answer) => unknown,
+  conflict?: { finalAction?: Answer; answer: Answer }) {
   const sent: { action?: Answer; key?: string }[] = [];
   await page.route(/\/api\/reports\/[^/]+\/resolve$/, (route) => {
     // Only the report this test sent (the id is percent-encoded in the path).
     expect(decodeURIComponent(new URL(route.request().url()).pathname)).toBe(`/api/reports/${REPORT_ID}/resolve`);
     const body = route.request().postDataJSON() as { action: Answer; key: string };
     sent.push(body);
+    if (conflict) return route.fulfill({ status: 409, json: conflict.finalAction ? { finalAction: conflict.finalAction } : { error: 'already decided' } });
     return route.fulfill({ json: { finalAction: body.action } });
   });
   // Added after stubServices, so it comes first for GET /api/reports/{id}.
-  await page.route(/\/api\/reports\/[^/]+$/, (route) => route.fulfill({ json: sent[0]?.action ? after(sent[0].action) : before() }));
+  await page.route(/\/api\/reports\/[^/]+$/, (route) => route.fulfill({
+    json: sent[0]?.action ? after(conflict ? conflict.answer : sent[0].action) : before(),
+  }));
   return sent;
 }
 
 /** Clicks a featured card by its prepared report's id, and checks that this id is what the page sends. */
-async function sendPrepared(page: Page, id: string) {
+async function sendPrepared(page: Page, id: string, lang: 'en' | 'ja' = 'en') {
   const sent = page.waitForRequest((r) => r.url().endsWith('/api/reports') && r.method() === 'POST');
   await page.locator(`#featured button.card[aria-labelledby="card-${id}-title"]`).click();
-  expect((await sent).postDataJSON()).toEqual({ prepared: id, lang: 'en' });
+  expect((await sent).postDataJSON()).toEqual({ prepared: id, lang });
 }
 
 const listed = {
@@ -311,4 +320,94 @@ test('a report of someone in danger is urgent, alerts the site, and the visitor 
   expect(answers).toEqual([{ action: 'reject', key: 'k'.repeat(32) }]);
   await expect(page.locator('#final .headline')).toHaveText('Rejected: residents never see it', { timeout: 10_000 });
   await expect(page.locator('#final .rule-text')).toHaveText('A person rejected the report: it stays rejected.');
+});
+
+/** The waiting report of the "vague" flow, before and after an answer: published in the end. */
+function vagueFlow(sentAt: number) {
+  return {
+    before: () => waitingReport(sentAt, { action: 'review', danger: 0.05 }, { action: 'none' }, { action: 'review' }, null),
+    after: (action: Answer) => waitingReport(sentAt, { action: 'review', danger: 0.05 }, { action: 'none' }, { action: 'review' }, { action, final: { action: 'publish', policyRule: '3' } }),
+  };
+}
+
+/** Steps 2 and 3 of a report that waits for a person: on to step 4. */
+async function toResult(page: Page) {
+  await page.locator('#rule').getByRole('button').click();
+  await page.locator('#chain').getByRole('button').click();
+  await expect(page.locator('#step-result')).toBeVisible();
+}
+
+test('a visitor without the report\'s key sees who decides, and gets no buttons', async ({ page }) => {
+  const sentAt = Date.now() - 5000;
+  const flow = vagueFlow(sentAt);
+  // The Worker gave no key (as for someone else's report): the page has none for this report.
+  await page.route('**/api/reports', (route) => route.request().method() === 'POST'
+    ? route.fulfill({ json: { id: REPORT_ID } })
+    : route.fulfill({ json: { reports: [listed] } }));
+  let issue: string | null = null;
+  await page.route(/\/api\/reports\/[^/]+$/, (route) => route.fulfill({ json: { ...flow.before(), issue } }));
+  await page.goto('/');
+  await sendPrepared(page, 'vague');
+  await toResult(page);
+  const person = page.locator('#person');
+  await expect(person.locator('.box-title')).toHaveText('A person decides');
+  await expect(person).toContainText('It is being added to the review queue…');
+  await expect(person.getByRole('button')).toHaveCount(0);
+  // Once the issue is open, the box links to it (the next poll, after 4 s).
+  issue = 'https://github.com/geolonia/pointsman-demo-roads/issues/999';
+  await expect(person).toContainText('A team member checks this report in the review queue.', { timeout: 10_000 });
+  await expect(person.getByRole('link')).toHaveText('Open it in the review queue (#999)');
+});
+
+test('an answer given first in another tab: the page shows that answer, not an error', async ({ page, pageErrors }) => {
+  const flow = vagueFlow(Date.now() - 5000);
+  const answers = await stubPersonFlow(page, flow.before, flow.after, { finalAction: 'publish', answer: 'publish' });
+  await page.goto('/');
+  await sendPrepared(page, 'vague');
+  await toResult(page);
+  const duty = page.locator('#person');
+  // This tab answers "reject"; the other tab already published it.
+  await duty.getByRole('button', { name: 'Reject it' }).click();
+  await expect(duty).toContainText('Published. The residents’ map shows it now.');
+  await expect(duty.locator('[role="alert"]')).toHaveCount(0);
+  expect(answers).toEqual([{ action: 'reject', key: 'k'.repeat(32) }]);
+  await expect(page.locator('#final .headline')).toHaveText('Published: residents see it now', { timeout: 10_000 });
+  // The 409 is this test's own answer: not a page error.
+  pageErrors.splice(0, pageErrors.length, ...pageErrors.filter((e) => !/^409 POST .*\/resolve$/.test(e)));
+});
+
+test('an answer someone else gave first: the page shows the report as it is now, and no buttons', async ({ page, pageErrors }) => {
+  const flow = vagueFlow(Date.now() - 5000);
+  // Someone else published it; this visitor's answer is refused.
+  const answers = await stubPersonFlow(page, flow.before, (action) => ({ ...flow.after(action), visitorDecision: null }), { answer: 'publish' });
+  await page.goto('/');
+  await sendPrepared(page, 'vague');
+  await toResult(page);
+  const duty = page.locator('#person');
+  await duty.getByRole('button', { name: 'Reject it' }).click();
+  expect(answers).toEqual([{ action: 'reject', key: 'k'.repeat(32) }]);
+  await expect(page.locator('#final .headline')).toHaveText('Published: residents see it now');
+  await expect(page.locator('#final .rule-text')).toHaveText('The person who checked the first result published it.');
+  // Not this visitor's answer: no "you published it", and nothing to answer.
+  await expect(duty).toBeEmpty();
+  // The 409 is this test's own answer: not a page error.
+  pageErrors.splice(0, pageErrors.length, ...pageErrors.filter((e) => !/^409 POST .*\/resolve$/.test(e)));
+});
+
+test('the person flow in Japanese: the report is sent in Japanese, and the visitor publishes it', async ({ page }) => {
+  const flow = vagueFlow(Date.now() - 5000);
+  const answers = await stubPersonFlow(page, flow.before, flow.after);
+  await page.goto('/');
+  await expect(page.locator('#featured button.card')).toHaveCount(4);
+  await page.locator('#lang').click();
+  await expect(page.locator('html')).toHaveAttribute('lang', 'ja');
+  await sendPrepared(page, 'vague', 'ja');
+  await toResult(page);
+  await expect(page.locator('#final .headline')).toHaveText('レビュー待ち');
+  const duty = page.locator('#person');
+  await expect(duty.locator('.box-title')).toHaveText('あなたが担当者です');
+  await duty.getByRole('button', { name: '公開する' }).click();
+  await expect(duty).toContainText('公開しました。住民向けの地図に載っています。');
+  expect(answers).toEqual([{ action: 'publish', key: 'k'.repeat(32) }]);
+  await expect(page.locator('#final .headline')).toHaveText('公開：住民がすぐに見られます', { timeout: 10_000 });
 });
