@@ -1,7 +1,7 @@
 // Smoke tests: the page loads on the real Worker, its main controls work,
 // and prepared reports go through all four steps: one published at once, one
 // a person publishes, and one urgent that a person rejects; all three also in
-// Japanese (the person flow's last step).
+// Japanese.
 // A visitor without the report's key sees who decides; an answer given first
 // in another tab, or by someone else (409), shows the report as it is. Endpoints that need
 // the broker or Pointsman are stubbed here (playwright.config.ts says why);
@@ -295,10 +295,8 @@ test('an unclear report waits for a person, and the visitor publishes it', async
 });
 
 test('a report of someone in danger is urgent, alerts the site, and the visitor rejects it', async ({ page }) => {
-  const sentAt = Date.now() - 5000;
-  const answers = await stubPersonFlow(page,
-    () => waitingReport(sentAt, { action: 'urgent', policyRule: '0', danger: 0.9 }, { action: 'alert', policyRule: '0' }, { action: 'urgent', policyRule: '2' }, null),
-    (action) => waitingReport(sentAt, { action: 'urgent', policyRule: '0', danger: 0.9 }, { action: 'alert', policyRule: '0' }, { action: 'urgent', policyRule: '2' }, { action, final: { action: 'reject', policyRule: '0' } }));
+  const flow = urgentFlow(Date.now() - 5000);
+  const answers = await stubPersonFlow(page, flow.before, flow.after);
   await page.goto('/');
   await sendPrepared(page, 'car-trapped');
 
@@ -330,6 +328,17 @@ function vagueFlow(sentAt: number) {
   return {
     before: () => waitingReport(sentAt, { action: 'review', danger: 0.05 }, { action: 'none' }, { action: 'review' }, null),
     after: (action: Answer) => waitingReport(sentAt, { action: 'review', danger: 0.05 }, { action: 'none' }, { action: 'review' }, { action, final: { action: 'publish', policyRule: '3' } }),
+  };
+}
+
+/** The waiting report of the "car-trapped" flow, before and after an answer: rejected in the end. */
+function urgentFlow(sentAt: number) {
+  const first = { action: 'urgent', policyRule: '0', danger: 0.9 } as const;
+  const evacuation = { action: 'alert', policyRule: '0' } as const;
+  const finalBefore = { action: 'urgent', policyRule: '2' };
+  return {
+    before: () => waitingReport(sentAt, first, evacuation, finalBefore, null),
+    after: (action: Answer) => waitingReport(sentAt, first, evacuation, finalBefore, { action, final: { action: 'reject', policyRule: '0' } }),
   };
 }
 
@@ -398,13 +407,18 @@ test('an answer someone else gave first: the page shows the report as it is now,
   pageErrors.splice(0, pageErrors.length, ...pageErrors.filter((e) => !/^409 POST .*\/resolve$/.test(e)));
 });
 
-test('the person flow in Japanese: the report is sent in Japanese, and the visitor publishes it', async ({ page }) => {
-  const flow = vagueFlow(Date.now() - 5000);
-  const answers = await stubPersonFlow(page, flow.before, flow.after);
+/** Opens the page in Japanese. */
+async function inJapanese(page: Page) {
   await page.goto('/');
   await expect(page.locator('#featured button.card')).toHaveCount(4);
   await page.locator('#lang').click();
   await expect(page.locator('html')).toHaveAttribute('lang', 'ja');
+}
+
+test('the person flow in Japanese: the report is sent in Japanese, and the visitor publishes it', async ({ page }) => {
+  const flow = vagueFlow(Date.now() - 5000);
+  const answers = await stubPersonFlow(page, flow.before, flow.after);
+  await inJapanese(page);
   await sendPrepared(page, 'vague', 'ja');
   await toResult(page);
   await expect(page.locator('#final .headline')).toHaveText('レビュー待ち');
@@ -415,14 +429,6 @@ test('the person flow in Japanese: the report is sent in Japanese, and the visit
   expect(answers).toEqual([{ action: 'publish', key: KEY }]);
   await expect(page.locator('#final .headline')).toHaveText('公開：住民がすぐに見られます', { timeout: 10_000 });
 });
-
-/** Opens the page in Japanese. */
-async function inJapanese(page: Page) {
-  await page.goto('/');
-  await expect(page.locator('#featured button.card')).toHaveCount(4);
-  await page.locator('#lang').click();
-  await expect(page.locator('html')).toHaveAttribute('lang', 'ja');
-}
 
 test('in Japanese: a clear report is published at once, without a person', async ({ page }) => {
   await inJapanese(page);
@@ -442,14 +448,13 @@ test('in Japanese: a clear report is published at once, without a person', async
 });
 
 test('in Japanese: a report of someone in danger is urgent, alerts the site, and the visitor rejects it', async ({ page }) => {
-  const sentAt = Date.now() - 5000;
-  const answers = await stubPersonFlow(page,
-    () => waitingReport(sentAt, { action: 'urgent', policyRule: '0', danger: 0.9 }, { action: 'alert', policyRule: '0' }, { action: 'urgent', policyRule: '2' }, null),
-    (action) => waitingReport(sentAt, { action: 'urgent', policyRule: '0', danger: 0.9 }, { action: 'alert', policyRule: '0' }, { action: 'urgent', policyRule: '2' }, { action, final: { action: 'reject', policyRule: '0' } }));
+  const flow = urgentFlow(Date.now() - 5000);
+  const answers = await stubPersonFlow(page, flow.before, flow.after);
   await inJapanese(page);
   await sendPrepared(page, 'car-trapped', 'ja');
   // Step 2: someone may be in danger.
   const rule = page.locator('#rule');
+  await expect(rule.locator('.badge')).toHaveText('緊急');
   await expect(rule.locator('.rule-text')).toHaveText('人に危険がありそうなら、真っ先に人が確認します。');
   await rule.getByRole('button').click();
   // Step 3: urgent, and the evacuation site's staff get an alert.
