@@ -16,14 +16,14 @@
     "check": "pnpm typecheck && pnpm test && wrangler deploy --dry-run --outdir .wrangler/dry-run"
   },
   "devDependencies": {
-    "@cloudflare/vitest-plugin": "^1.7.0",
+    "@cloudflare/vitest-plugin": "^1.8.5",
     "@playwright/test": "~1.65.1",
-    "jsdom": "31.0.0",
+    "jsdom": "31.0.1",
     "jsonc-parser": "^3.3.1",
     "maplibre-gl": "5.24.1",
     "typescript": "^7.0.2",
     "vitest": "~4.1.12",
-    "wrangler": "^4.160.0"
+    "wrangler": "^4.165.0"
   },
   "packageManager": "pnpm@12.9.1"
 }
